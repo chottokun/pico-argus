@@ -1,21 +1,19 @@
 import os
+import urllib.request
 import cv2
-
-# 👇 この2行を付け足してください
-print("=" * 50)
-print(f"🔎 犯人捜索: Pythonが読み込んでいるcv2の場所 ➔ {getattr(cv2, '__file__', '場所が特定できません')}")
-print("=" * 50)
 
 import threading
 import time
 from dotenv import load_dotenv
 from onvif import ONVIFCamera
 
+from camera_config import build_rtsp_url, require_env
+
 # 環境変数の読み込み
 load_dotenv()
-TAPO_USER = os.getenv("TAPO_USER")
-TAPO_PASS = os.getenv("TAPO_PASS")
-TAPO_IP = os.getenv("TAPO_IP")
+TAPO_USER = require_env("TAPO_USER")
+TAPO_PASS = require_env("TAPO_PASS")
+TAPO_IP = require_env("TAPO_IP")
 
 # --- 🛠️ 1. ONVIFの初期化 ---
 try:
@@ -52,8 +50,6 @@ def async_move(x, y):
 # --- 👤 3. 顔検出器の準備 ---
 # OpenCVに標準内蔵されている軽量な顔検出ファイルを使用します
 
-import urllib.request
-
 xml_path = "haarcascade_frontalface_default.xml"
 
 # もしフォルダ内に設計図ファイルがなければ、OpenCV公式GitHubから自動ダウンロードする
@@ -67,7 +63,7 @@ if not os.path.exists(xml_path):
 face_cascade = cv2.CascadeClassifier(xml_path)
 
 # --- 📹 4. 映像ストリームの開始 ---
-rtsp_url = f"rtsp://{TAPO_USER}:{TAPO_PASS}@{TAPO_IP}:554/stream1"
+rtsp_url = build_rtsp_url(TAPO_USER, TAPO_PASS, TAPO_IP, "stream1")
 cap = cv2.VideoCapture(rtsp_url)
 
 if not cap.isOpened():

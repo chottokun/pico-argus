@@ -1,17 +1,18 @@
 import cv2
-import os
 from dotenv import load_dotenv
+
+from camera_config import build_rtsp_url, require_env
 
 # 事前準備で確認・設定した情報
 load_dotenv()
 
-TAPO_USER = os.getenv("TAPO_USER")
-TAPO_PASS = os.getenv("TAPO_PASS")
-TAPO_IP = os.getenv("TAPO_IP")
+TAPO_USER = require_env("TAPO_USER")
+TAPO_PASS = require_env("TAPO_PASS")
+TAPO_IP = require_env("TAPO_IP")
 
 # RTSPのURLを設定 
 # stream1 = 高画質(2K/1080p) / stream2 = 低画質(360p)
-rtsp_url = f"rtsp://{TAPO_USER}:{TAPO_PASS}@{TAPO_IP}:554/stream1"
+rtsp_url = build_rtsp_url(TAPO_USER, TAPO_PASS, TAPO_IP, "stream1")
 
 # ビデオキャプチャの開始
 cap = cv2.VideoCapture(rtsp_url)

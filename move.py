@@ -1,20 +1,17 @@
-import os
 import cv2
 import threading
 from dotenv import load_dotenv
 from onvif import ONVIFCamera
 
+from camera_config import build_rtsp_url, require_env
+
 # 環境変数の読み込み
 load_dotenv()
 
 # ONVIF経由の場合、アプリのEMAIL/PASSWORDは【完全に不要】です！
-TAPO_USER = os.getenv("TAPO_USER")  # アプリの高度な設定で作ったユーザー名
-TAPO_PASS = os.getenv("TAPO_PASS")  # アプリの高度な設定で作ったパスワード
-TAPO_IP = os.getenv("TAPO_IP")
-
-if not all([TAPO_IP, TAPO_USER, TAPO_PASS]):
-    print("エラー: .env の TAPO_IP, TAPO_USER, TAPO_PASS が設定されていません。")
-    exit(1)
+TAPO_USER = require_env("TAPO_USER")  # アプリの高度な設定で作ったユーザー名
+TAPO_PASS = require_env("TAPO_PASS")  # アプリの高度な設定で作ったパスワード
+TAPO_IP = require_env("TAPO_IP")
 
 
 def init_onvif_client():
@@ -75,7 +72,7 @@ def async_move(x, y):
 
 
 # RTSPストリームの開始
-rtsp_url = f"rtsp://{TAPO_USER}:{TAPO_PASS}@{TAPO_IP}:554/stream1"
+rtsp_url = build_rtsp_url(TAPO_USER, TAPO_PASS, TAPO_IP, "stream1")
 cap = cv2.VideoCapture(rtsp_url)
 
 if not cap.isOpened():

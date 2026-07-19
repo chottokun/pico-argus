@@ -10,6 +10,8 @@ import json
 from dotenv import load_dotenv
 from onvif import ONVIFCamera
 
+from camera_config import build_rtsp_url, require_env
+
 # --- 📁 0. ログシステムの設定 ---
 log_format = "%(asctime)s [%(levelname)s] %(message)s"
 logging.basicConfig(
@@ -34,9 +36,9 @@ COCO_CLASSES = [
 ]
 
 load_dotenv()
-TAPO_USER = os.getenv("TAPO_USER")
-TAPO_PASS = os.getenv("TAPO_PASS")
-TAPO_IP = os.getenv("TAPO_IP")
+TAPO_USER = require_env("TAPO_USER")
+TAPO_PASS = require_env("TAPO_PASS")
+TAPO_IP = require_env("TAPO_IP")
 
 # --- 🛠️ 1. ONVIFの初期化 & PTZプロファイルの自動探索 ---
 try:
@@ -47,14 +49,18 @@ try:
     profile_token = next((p.token for p in profiles if hasattr(p, 'PTZConfiguration') and p.PTZConfiguration is not None), profiles[0].token)
     logging.info("✅ ONVIF初期化成功。")
 except Exception as e:
-    logging.error(f"ONVIF初期化エラー: {e}"); exit(1)
+    logging.error(f"ONVIF初期化エラー: {e}")
+    raise SystemExit(1)
 
 # --- 🔒 2. 安全対策・スレッド競合防止（キューシステム） ---
 move_queue = queue.Queue(maxsize=1)
+
+
 def ptz_worker():
     while True:
         command = move_queue.get()
-        if command is None: break
+        if command is None:
+            break
         x, y = command
         try:
             request = ptz.create_type('RelativeMove')
@@ -70,8 +76,10 @@ threading.Thread(target=ptz_worker, daemon=True).start()
 
 def send_move_command(x, y):
     if move_queue.full():
-        try: move_queue.get_nowait()
-        except queue.Empty: pass
+        try:
+            move_queue.get_nowait()
+        except queue.Empty:
+            pass
     move_queue.put((x, y))
 
 # --- 🎯 3. トラッキング制御用パラメータ ＆ JSON読み込み ---
@@ -109,10 +117,14 @@ def send_safe_move_command(requested_x, requested_y):
     next_y = current_internal_y + requested_y
     actual_move_x, actual_move_y = requested_x, requested_y
 
-    if next_x > MAX_LIMIT_X: actual_move_x = MAX_LIMIT_X - current_internal_x
-    elif next_x < -MAX_LIMIT_X: actual_move_x = -MAX_LIMIT_X - current_internal_x
-    if next_y > MAX_LIMIT_Y: actual_move_y = MAX_LIMIT_Y - current_internal_y
-    elif next_y < -MAX_LIMIT_Y: actual_move_y = -MAX_LIMIT_Y - current_internal_y
+    if next_x > MAX_LIMIT_X:
+        actual_move_x = MAX_LIMIT_X - current_internal_x
+    elif next_x < -MAX_LIMIT_X:
+        actual_move_x = -MAX_LIMIT_X - current_internal_x
+    if next_y > MAX_LIMIT_Y:
+        actual_move_y = MAX_LIMIT_Y - current_internal_y
+    elif next_y < -MAX_LIMIT_Y:
+        actual_move_y = -MAX_LIMIT_Y - current_internal_y
 
     if abs(actual_move_x) > 0.001 or abs(actual_move_y) > 0.001:
         send_move_command(actual_move_x, actual_move_y)
@@ -132,20 +144,27 @@ class RTSPVideoReader:
 
     def _keep_reading(self):
         while self.running:
-            if not self.cap.isOpened(): break
+            if not self.cap.isOpened():
+                break
             try:
                 ret, frame = self.cap.read()
-                if ret: self.frame, self.ret = frame, ret
-                else: time.sleep(0.01)
-            except Exception: break
+                if ret:
+                    self.frame, self.ret = frame, ret
+                else:
+                    time.sleep(0.01)
+            except Exception:
+                break
 
-    def read(self): return self.ret, self.frame
+    def read(self):
+        return self.ret, self.frame
+
     def release(self):
         self.running = False
         time.sleep(0.2)
-        if self.cap.isOpened(): self.cap.release()
+        if self.cap.isOpened():
+            self.cap.release()
 
-rtsp_url = f"rtsp://{TAPO_USER}:{TAPO_PASS}@{TAPO_IP}:554/stream1"
+rtsp_url = build_rtsp_url(TAPO_USER, TAPO_PASS, TAPO_IP, "stream1")
 video_reader = RTSPVideoReader(rtsp_url)
 time.sleep(1.0)
 
@@ -160,7 +179,9 @@ net = cv2.dnn.readNetFromONNX(onnx_path)
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 
 ret, test_frame = video_reader.read()
-if not ret or test_frame is None: logging.error("映像ストリーム受信失敗"); exit()
+if not ret or test_frame is None:
+    logging.error("映像ストリーム受信失敗")
+    raise SystemExit(1)
 
 width, height = int(test_frame.shape[1]), int(test_frame.shape[0])
 center_x, center_y = width // 2, height // 2
@@ -171,12 +192,13 @@ DEAD_ZONE_Y = int(height * 0.10) # 🛠️ 20% から 10% に大幅縮小（上�
 
 x_factor, y_factor = width / 640, height / 640
 
-logging.info(f"🚀 上下キビキビ追尾システム稼働！")
+logging.info("🚀 上下キビキビ追尾システム稼働！")
 
 while True:
     ret, frame = video_reader.read()
     if not ret or frame is None:
-        time.sleep(0.01); continue
+        time.sleep(0.01)
+        continue
 
     blob = cv2.dnn.blobFromImage(frame, 1/255.0, (640, 640), swapRB=True, crop=False)
     net.setInput(blob)
@@ -198,7 +220,8 @@ while True:
         box_class_ids.append(int(class_ids[i]))
 
     indices = cv2.dnn.NMSBoxes(boxes, confidences, CONF_THRESHOLD, 0.4)
-    if len(indices) > 0: indices = np.array(indices).flatten()
+    if len(indices) > 0:
+        indices = np.array(indices).flatten()
 
     # ガイドライン描画
     cv2.line(frame, (center_x, 0), (center_x, height), (255, 0, 0), 1)
@@ -260,7 +283,8 @@ while True:
         last_move_time = current_time
 
     cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'): break
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
 
 logging.info("🛑 システム終了処理...")
 move_queue.put(None)

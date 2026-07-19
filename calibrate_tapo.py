@@ -1,4 +1,3 @@
-import os
 import cv2
 import numpy as np
 import time
@@ -6,6 +5,8 @@ import json
 import threading
 from dotenv import load_dotenv
 from onvif import ONVIFCamera
+
+from camera_config import build_rtsp_url, require_env
 
 # =====================================================================
 # ⚙️ 【カメラ・通信環境に合わせた調整パラメータ】
@@ -20,9 +21,9 @@ PIXEL_DIFF_THRESHOLD = 15  # 画素の差分しきい値 (0〜255)
 # =====================================================================
 
 load_dotenv()
-TAPO_USER = os.getenv("TAPO_USER")
-TAPO_PASS = os.getenv("TAPO_PASS")
-TAPO_IP = os.getenv("TAPO_IP")
+TAPO_USER = require_env("TAPO_USER")
+TAPO_PASS = require_env("TAPO_PASS")
+TAPO_IP = require_env("TAPO_IP")
 
 # --- 🛠️ 1. ONVIFの初期化 ---
 try:
@@ -32,7 +33,8 @@ try:
     profiles = media.GetProfiles()
     profile_token = next((p.token for p in profiles if hasattr(p, 'PTZConfiguration') and p.PTZConfiguration is not None), profiles[0].token)
 except Exception as e:
-    print(f"❌ 初期化エラー: {e}"); exit(1)
+    print(f"❌ 初期化エラー: {e}")
+    raise SystemExit(1)
 
 # --- 📹 2. RTSPバッファ自動消滅スレッドクラス ---
 class RTSPVideoReader:
@@ -68,18 +70,20 @@ class RTSPVideoReader:
             self.cap.release()
 
 # スレッド駆動の映像読み込みを開始
-rtsp_url = f"rtsp://{TAPO_USER}:{TAPO_PASS}@{TAPO_IP}:554/stream1"
+rtsp_url = build_rtsp_url(TAPO_USER, TAPO_PASS, TAPO_IP, "stream1")
 video_reader = RTSPVideoReader(rtsp_url)
 
 time.sleep(1.0)
 ret, test_frame = video_reader.read()
 if not ret or test_frame is None:
-    print("❌ 映像ストリームを正常に受信できませんでした。"); exit()
+    print("❌ 映像ストリームを正常に受信できませんでした。")
+    raise SystemExit(1)
 
 
 def move_and_check_survival(step_x, step_y, status_text):
     ret, frame_before = video_reader.read()
-    if not ret or frame_before is None: return False
+    if not ret or frame_before is None:
+        return False
     gray_before = cv2.cvtColor(frame_before, cv2.COLOR_BGR2GRAY)
     
     request = ptz.create_type('RelativeMove')
@@ -90,7 +94,8 @@ def move_and_check_survival(step_x, step_y, status_text):
     time.sleep(RTSP_LAG_TIMEOUT)
     
     ret, frame_after = video_reader.read()
-    if not ret or frame_after is None: return False
+    if not ret or frame_after is None:
+        return False
     gray_after = cv2.cvtColor(frame_after, cv2.COLOR_BGR2GRAY)
     
     diff = cv2.absdiff(gray_before, gray_after)
@@ -153,7 +158,7 @@ time.sleep(1.0)
 center_steps_x = total_steps_x // 2
 center_steps_y = total_steps_y // 2
 print(f"\n🔄 計測完了（左右総幅: {total_steps_x}歩 / 上下総幅: {total_steps_y}歩）")
-print(f"🔄 物理的な【真の中心原点】へカメラを移動しています...")
+print("🔄 物理的な【真の中心原点】へカメラを移動しています...")
 
 # 💡【修正】左右のセンター復帰を画面に映す
 for i in range(center_steps_x):
@@ -194,9 +199,11 @@ config_data = {
 with open("tapo_config.json", "w", encoding="utf-8") as f:
     json.dump(config_data, f, indent=4, ensure_ascii=False)
 
-print(f"\n✅ キャリブレーションが完全に完了しました！")
-print(f"🎯 カメラは物理的な可動域の【ド真ん中】で停止しています。")
-print(f"💾 結果を 'tapo_config.json' に保存しました（左右限界: ±{calculated_limit_x}, 上下限界: ±{calculated_limit_y}）\n")
+print("\n✅ キャリブレーションが完全に完了しました！")
+print("🎯 カメラは物理的な可動域の【ド真ん中】で停止しています。")
+print(
+    f"💾 結果を 'tapo_config.json' に保存しました（左右限界: ±{calculated_limit_x}, 上下限界: ±{calculated_limit_y}）\n"
+)
 
 # 安全に解放
 video_reader.release()

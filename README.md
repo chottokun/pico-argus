@@ -103,6 +103,13 @@ python tapo_yolo_tracking.py
 python trace_face.py
 ```
 
+## 開発・品質チェック
+
+- 依存関係の同期: `uv sync`
+- テスト実行: `uv run pytest`
+- Lint 実行: `uv run ruff check .`
+- セキュリティスキャン: `uv audit` と `gitleaks detect --verbose --source=.`
+
 ## よくあるトラブル
 
 - カメラに接続できない
