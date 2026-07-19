@@ -2,7 +2,7 @@ import os
 import cv2
 import threading
 from dotenv import load_dotenv
-from onvif import ONVIFCamera  # pytapo から ONVIF に変更
+from onvif import ONVIFCamera
 
 # 環境変数の読み込み
 load_dotenv()

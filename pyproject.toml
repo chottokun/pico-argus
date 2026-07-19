@@ -5,8 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "numpy>=2.5.1",
     "onvif-zeep>=0.2.12",
+    "opencv-contrib-python>=5.0.0.93",
     "opencv-python>=5.0.0.93",
-    "pytapo>=3.4.18",
     "python-dotenv>=1.2.2",
 ]

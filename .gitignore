@@ -1,3 +1,21 @@
+# Project-specific runtime artifacts
+.env
+.env.*
+.python-version
+.venv/
+venv/
+env/
+__pycache__/
+*.log
+*.onnx
+*.weights
+*.pt
+*.pth
+*.bin
+haarcascade_frontalface_default.xml
+tapo_config.json
+tapo_config*.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -152,9 +170,9 @@ activemq-data/
 # Environments
 .env
 .envrc
-.venv
-env/
+.venv/
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
