@@ -243,6 +243,14 @@ try:
                 
                 # PID計算
                 dx, dy = pid.calculate_step(norm_cx, 1.0 - norm_cy, dt)
+                # 左右逆転補正（画面左にある場合カメラを左へ振るために符号反転）
+                dx = -dx
+                
+                logging.info(
+                    f"🎯 [PID debug] Target: cx={norm_cx:.2f}, cy={norm_cy:.2f} | "
+                    f"dt={dt:.3f}s | PID step: dx={dx:+.3f}, dy={dy:+.3f} | "
+                    f"PTZ Pos: X={ptz.current_x:.2f}, Y={ptz.current_y:.2f}"
+                )
                 
                 if dx != 0.0 or dy != 0.0:
                     ptz.safe_move(dx, dy)
@@ -260,8 +268,12 @@ finally:
     cognition_loop.call_soon_threadsafe(cognition_loop.stop)
     cognition_thread.join(timeout=1.0)
     
-    asyncio.run(vlm_client.close())
+    try:
+        asyncio.run(vlm_client.close())
+    except Exception as e:
+        logging.warning(f"Failed to close VLM client safely: {e}")
     memory_store.close()
+
     
     video_reader.release()
     cv2.destroyAllWindows()

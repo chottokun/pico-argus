@@ -236,3 +236,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SQLite databases
+*.db
+wiki.db
