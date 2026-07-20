@@ -96,3 +96,30 @@ def test_ptz_controller_align_to_home(mock_onvif_camera) -> None:
     assert controller.current_x == 0.0
     assert controller.current_y == 0.0
 
+
+def test_ptz_controller_safe_move_with_inversion(mock_onvif_camera) -> None:
+    mock_cam, mock_ptz, mock_media = mock_onvif_camera
+    mock_request = MagicMock()
+    mock_ptz.create_type.return_value = mock_request
+
+    # 左右・上下両方を反転に設定
+    controller = PTZController(
+        ip="192.168.1.100", user="user", password="pwd",
+        max_limit_x=1.0, max_limit_y=0.5,
+        invert_pan=True,
+        invert_tilt=True
+    )
+
+    # 限界内の移動 (0.5, 0.2)
+    # 反転フラグがあるため、物理移動コマンドは (-0.5, -0.2) になるべき
+    controller.safe_move(0.5, 0.2)
+    time.sleep(0.2)
+
+    # 内部現在位置の推測は正方向（論理座標）に加算される
+    assert controller.current_x == 0.5
+    assert controller.current_y == 0.2
+
+    # 実際に渡された引数は符号反転しているか
+    assert mock_request.Translation == {'PanTilt': {'x': -0.5, 'y': -0.2}}
+
+

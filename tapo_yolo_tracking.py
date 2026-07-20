@@ -58,7 +58,9 @@ try:
         max_limit_x=config.max_limit_x,
         max_limit_y=config.max_limit_y,
         align_to_home=config.align_to_home,
-        video_reader=video_reader
+        video_reader=video_reader,
+        invert_pan=config.invert_pan,
+        invert_tilt=config.invert_tilt
     )
     logging.info("✅ ONVIF/PTZ初期化および動的ホームアライメント成功。")
 except Exception as e:

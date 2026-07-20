@@ -16,6 +16,8 @@ def test_app_config_loads_env_and_defaults(monkeypatch) -> None:
     mock_json_data = json.dumps({
         "MAX_LIMIT_X": 1.15,
         "MAX_LIMIT_Y": 0.90,
+        "INVERT_PAN": True,
+        "INVERT_TILT": True,
         "CALIBRATED_AT": "2026-07-20 12:00:00"
     })
 
@@ -37,6 +39,8 @@ def test_app_config_loads_env_and_defaults(monkeypatch) -> None:
             assert config.cognition_target_rule == "a person wearing a hat"  # デフォルト値
             assert config.max_limit_x == 1.15
             assert config.max_limit_y == 0.90
+            assert config.invert_pan is True
+            assert config.invert_tilt is True
 
 def test_app_config_supports_env_override(monkeypatch) -> None:
     monkeypatch.setenv("TAPO_USER", "test_user")

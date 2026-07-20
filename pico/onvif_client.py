@@ -16,16 +16,20 @@ class PTZController:
         self, ip: str, user: str, password: str, port: int = 2020,
         max_limit_x: float = 1.0, max_limit_y: float = 0.5,
         align_to_home: bool = False,
-        video_reader: Optional[RTSPVideoReader] = None
+        video_reader: Optional[RTSPVideoReader] = None,
+        invert_pan: bool = False,
+        invert_tilt: bool = False
     ) -> None:
         self.ip: str = ip
         self.user: str = user
         self.password: str = password
         self.port: int = port
         
-        # 可動限界値
+        # 可動限界値と反転フラグ
         self.max_limit_x: float = max_limit_x
         self.max_limit_y: float = max_limit_y
+        self.invert_pan: bool = invert_pan
+        self.invert_tilt: bool = invert_tilt
         
         # 現在の推測位置 (0.0, 0.0 はキャリブレーション後の真の中心原点と仮定)
         self.current_x: float = 0.0
@@ -215,11 +219,14 @@ class PTZController:
             actual_move_y = -self.max_limit_y - self.current_y
 
         if abs(actual_move_x) > 0.001 or abs(actual_move_y) > 0.001:
-            self.relative_move(actual_move_x, actual_move_y)
+            # 物理カメラに命令を送信するタイミングで反転を適用
+            cmd_x = -actual_move_x if self.invert_pan else actual_move_x
+            cmd_y = -actual_move_y if self.invert_tilt else actual_move_y
+            self.relative_move(cmd_x, cmd_y)
             self.current_x += actual_move_x
             self.current_y += actual_move_y
             logger.info(
-                f"PTZ Safe Move: x={actual_move_x:+.3f}, y={actual_move_y:+.3f} | "
+                f"PTZ Safe Move: x={actual_move_x:+.3f}, y={actual_move_y:+.3f} (cmd_x={cmd_x:+.3f}, cmd_y={cmd_y:+.3f}) | "
                 f"Estimated Pos: X={self.current_x:+.2f}, Y={self.current_y:+.2f}"
             )
             return actual_move_x, actual_move_y

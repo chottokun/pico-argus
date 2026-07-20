@@ -43,9 +43,11 @@ class AppConfig:
         align_env = os.getenv("TAPO_ALIGN_TO_HOME", "true").lower()
         self.align_to_home: bool = align_env not in ("false", "no", "0")
 
-        # キャリブレーション限界値の読み込み
+        # キャリブレーション限界値と反転設定の読み込み
         self.max_limit_x: float = DEFAULT_MAX_LIMIT_X
         self.max_limit_y: float = DEFAULT_MAX_LIMIT_Y
+        self.invert_pan: bool = False
+        self.invert_tilt: bool = False
         self._load_calibration_config(config_path)
 
     def _require_env(self, name: str) -> str:
@@ -63,8 +65,14 @@ class AppConfig:
                     data = json.load(f)
                     self.max_limit_x = data.get("MAX_LIMIT_X", DEFAULT_MAX_LIMIT_X)
                     self.max_limit_y = data.get("MAX_LIMIT_Y", DEFAULT_MAX_LIMIT_Y)
-                    logger.info(f"Loaded calibration limits from {config_path} - X: ±{self.max_limit_x}, Y: ±{self.max_limit_y}")
+                    self.invert_pan = data.get("INVERT_PAN", False)
+                    self.invert_tilt = data.get("INVERT_TILT", False)
+                    logger.info(
+                        f"Loaded calibration config from {config_path} - "
+                        f"Limits X: ±{self.max_limit_x}, Y: ±{self.max_limit_y} | "
+                        f"Invert Pan: {self.invert_pan}, Tilt: {self.invert_tilt}"
+                    )
             except Exception as e:
-                logger.error(f"Failed to load calibration config: {e}. Using default limits.")
+                logger.error(f"Failed to load calibration config: {e}. Using default values.")
         else:
-            logger.warning(f"Calibration config {config_path} not found. Using default limits.")
+            logger.warning(f"Calibration config {config_path} not found. Using default values.")
