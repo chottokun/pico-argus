@@ -15,13 +15,20 @@ load_dotenv()
 # --- 🛠️ 1. 設定 & ONVIF/RTSP初期化 ---
 try:
     config = AppConfig()
+    
+    # 映像ストリームを先に開始 (動的ホームアライメントで利用するため)
+    rtsp_url = build_rtsp_url(config.tapo_user, config.tapo_pass, config.tapo_ip, "stream1")
+    video_reader = RTSPVideoReader(rtsp_url)
+    time.sleep(1.5)  # ストリームの受信開始まで待機
+    
     ptz = PTZController(
         ip=config.tapo_ip,
         user=config.tapo_user,
         password=config.tapo_pass,
         max_limit_x=config.max_limit_x,
         max_limit_y=config.max_limit_y,
-        align_to_home=True
+        align_to_home=config.align_to_home,
+        video_reader=video_reader
     )
     print("✅ ONVIF初期化成功。自動追尾の準備が整いました。")
 except Exception as e:
@@ -52,12 +59,7 @@ if not os.path.exists(xml_path):
 # ローカルに保存したファイルを読み込む
 face_cascade = cv2.CascadeClassifier(xml_path)
 
-# --- 📹 3. 映像ストリームの開始 ---
-rtsp_url = build_rtsp_url(config.tapo_user, config.tapo_pass, config.tapo_ip, "stream1")
-video_reader = RTSPVideoReader(rtsp_url)
-
-# 最初のフレームから画面サイズを取得
-time.sleep(1.0)
+# --- 📹 3. 映像ストリームの確認 ---
 ret, test_frame = video_reader.read()
 if not ret or test_frame is None:
     print("映像ストリームの開始に失敗しました。")

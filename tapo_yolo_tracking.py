@@ -57,7 +57,7 @@ try:
         password=config.tapo_pass,
         max_limit_x=config.max_limit_x,
         max_limit_y=config.max_limit_y,
-        align_to_home=True,
+        align_to_home=config.align_to_home,
         video_reader=video_reader
     )
     logging.info("✅ ONVIF/PTZ初期化および動的ホームアライメント成功。")

@@ -38,6 +38,10 @@ class AppConfig:
         self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
 
+        # 起動時アライメント設定 (デフォルト True、"false", "no", "0" で無効化)
+        align_env = os.getenv("TAPO_ALIGN_TO_HOME", "true").lower()
+        self.align_to_home: bool = align_env not in ("false", "no", "0")
+
         # キャリブレーション限界値の読み込み
         self.max_limit_x: float = DEFAULT_MAX_LIMIT_X
         self.max_limit_y: float = DEFAULT_MAX_LIMIT_Y

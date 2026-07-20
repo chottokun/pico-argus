@@ -4,7 +4,6 @@ import time
 import logging
 from typing import Tuple, Optional
 import cv2
-import numpy as np
 from onvif import ONVIFCamera
 from pico.video_reader import RTSPVideoReader
 
@@ -53,7 +52,6 @@ class PTZController:
         if align_to_home:
             self._align_to_home_position(video_reader)
 
-
         # スレッド安全なコマンド送信用キュー (最大サイズ1で最新の命令のみ保持)
         self.move_queue: queue.Queue = queue.Queue(maxsize=1)
         self.running: bool = True
@@ -62,143 +60,97 @@ class PTZController:
         self.worker_thread.start()
 
     def _align_to_home_position(self, video_reader: Optional[RTSPVideoReader] = None) -> None:
-        """カメラを左右・上下に振ることで物理的な真の中心(0.0, 0.0)に位置合わせする動的アライメント処理。"""
-        logger.info("Starting startup Dynamic Home Alignment...")
+        """物理限界へのブラインド突き当てを行い、tapo_config.jsonの限界値に基づき中心へ復帰する高速・ロバストなアライメント。"""
+        logger.info("Starting startup Blind Physical Home Alignment...")
         try:
             step_size_x = 0.15
             step_size_y = 0.10
             wait_time = 1.4
-            max_attempts = 25
+            interrupted = False
+
+            # 設定値(tapo_config.json)から中心から端までの最大ステップ数を逆算
+            max_steps_x = int(round(self.max_limit_x / step_size_x))
+            max_steps_y = int(round(self.max_limit_y / step_size_y))
+
+            # バリデーションとフォールバック
+            if max_steps_x <= 0 or max_steps_x > 20:
+                max_steps_x = 8
+            if max_steps_y <= 0 or max_steps_y > 20:
+                max_steps_y = 10
+
+            # どのような初期位置からでも確実に突き当たるように、全幅分(片側最大幅の2倍) + マージン2歩を算出
+            hunt_steps_x = (max_steps_x * 2) + 2
+            hunt_steps_y = (max_steps_y * 2) + 2
+
+            logger.info(f"Configuration limits: self.max_limit_x={self.max_limit_x}, self.max_limit_y={self.max_limit_y}")
+            logger.info(f"Target steps: Center-to-Edge X={max_steps_x}, Y={max_steps_y}")
+            logger.info(f"Blind hunting steps to corner: X={hunt_steps_x} (LEFT), Y={hunt_steps_y} (BOTTOM)")
 
             # ----------------------------------------------------
-            # 補助関数：指定方向に動きが止まるまでカメラを駆動させる
+            # 補助関数：指定歩数だけカメラを駆動させ、プレビューとキー中断を処理する
             # ----------------------------------------------------
-            def move_until_limit(dx: float, dy: float, phase_name: str) -> int:
-                steps = 0
-                for attempt in range(max_attempts):
-                    before_frame = None
-                    if video_reader is not None:
-                        ret, frame_data = video_reader.read()
-                        if ret and frame_data is not None:
-                            before_frame = cv2.cvtColor(frame_data.copy(), cv2.COLOR_BGR2GRAY)
+            def execute_blind_move(dx: float, dy: float, total_steps: int, phase_name: str) -> None:
+                nonlocal interrupted
+                for i in range(total_steps):
+                    if interrupted:
+                        break
 
-                    # 移動コマンド送信
+                    # コマンド送信
                     request = self.ptz.create_type('RelativeMove')
                     request.ProfileToken = self.profile_token
                     request.Translation = {'PanTilt': {'x': dx, 'y': dy}}
                     self.ptz.RelativeMove(request)
 
-                    # 動的測定時は1.4秒の絶対静止待機 (RTSPバッファと物理移動を安定化)
-                    wait_time_actual = wait_time if video_reader is not None else 0.18
-                    time.sleep(wait_time_actual)
+                    # 物理駆動ラグ待機
+                    time.sleep(wait_time if video_reader is not None else 0.18)
 
-                    steps += 1
-
-                    # 動き停止検知
-                    if video_reader is not None and before_frame is not None:
-                        ret, frame_after = video_reader.read()
-                        if ret and frame_after is not None:
-                            after_gray = cv2.cvtColor(frame_after.copy(), cv2.COLOR_BGR2GRAY)
-                            diff = cv2.absdiff(before_frame, after_gray)
-                            _, thresh = cv2.threshold(diff, 15, 255, cv2.THRESH_BINARY)
-                            moved_ratio = (np.sum(thresh == 255) / thresh.size) * 100
-                            
-                            logger.info(f"Alignment [{phase_name}]: Step {steps} | Motion: {moved_ratio:.2f}%")
-                            
-                            # モニター表示
-                            disp = frame_after.copy()
-                            cv2.putText(disp, f"ALIGN: {phase_name} ({steps}) | Motion: {moved_ratio:.1f}%", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                    # モニター表示 & キーキャンセル監視
+                    if video_reader is not None:
+                        ret, frame = video_reader.read()
+                        if ret and frame is not None:
+                            disp = frame.copy()
+                            cv2.putText(disp, f"ALIGN: {phase_name} ({i+1}/{total_steps})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                            cv2.putText(disp, "Press [c] or [ESC] to Skip", (30, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
                             cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
-                            cv2.waitKey(1)
-
-                            # 最初の4ステップ以降で動きが3%未満なら停止と判定
-                            if moved_ratio < 3.0 and attempt >= 4:
-                                logger.info(f"🛑 [{phase_name}] Limit detected at step {steps}.")
+                            
+                            key = cv2.waitKey(1) & 0xFF
+                            if key in (ord('c'), 27):
+                                logger.warning(f"⚠️ [{phase_name}] Cancelled by user key event.")
+                                interrupted = True
                                 break
                     else:
-                        # モニタがない（テスト等）場合は、限界追い込みは12ステップで固定
-                        if attempt >= 12:
-                            break
-                return steps
+                        logger.info(f"Alignment [{phase_name}]: {i+1}/{total_steps}")
 
-            # ----------------------------------------------------
-            # アライメント実行
-            # ----------------------------------------------------
-            if video_reader is not None:
-                # 1. 左端への追い込み
-                logger.info("PHASE 1: Hunting LEFT edge...")
-                move_until_limit(-step_size_x, 0.0, "Hunting LEFT edge")
-                time.sleep(1.0)
+            # 1. 左端への追い込み（ブラインド突き当て）
+            logger.info("PHASE 1: Hunting LEFT physical edge...")
+            execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Hunting LEFT edge")
+            time.sleep(0.5)
 
-                # 2. 右端への駆動 ＆ 左右全幅計測
-                logger.info("PHASE 2: Measuring RIGHT width...")
-                total_steps_x = move_until_limit(step_size_x, 0.0, "Measuring RIGHT width")
-                time.sleep(1.0)
+            # 2. 下端への追い込み（ブラインド突き当て）
+            if not interrupted:
+                logger.info("PHASE 2: Hunting BOTTOM physical edge...")
+                execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
+                time.sleep(0.5)
 
-                # 3. 下端への追い込み
-                logger.info("PHASE 3: Hunting BOTTOM edge...")
-                move_until_limit(0.0, -step_size_y, "Hunting BOTTOM edge")
-                time.sleep(1.0)
+            # 3. 設定値に基づき「右・上」に戻して真の中心にアライメント
+            if not interrupted:
+                logger.info(f"PHASE 3: Returning to Center by X: {max_steps_x} steps (RIGHT)...")
+                execute_blind_move(step_size_x, 0.0, max_steps_x, "Returning Center X")
+                time.sleep(0.5)
 
-                # 4. 上端への駆動 ＆ 上下全幅計測
-                logger.info("PHASE 4: Measuring TOP width...")
-                total_steps_y = move_until_limit(0.0, step_size_y, "Measuring TOP width")
-                time.sleep(1.0)
-
-                # 復帰数の決定
-                center_steps_x = total_steps_x // 2
-                center_steps_y = total_steps_y // 2
-                logger.info(f"Scan complete. Width X: {total_steps_x} steps, Height Y: {total_steps_y} steps.")
-                logger.info(f"Returning to Center by X: {center_steps_x} steps, Y: {center_steps_y} steps...")
-            else:
-                # テストなどのフォールバック処理（ブラインド固定値）
-                center_steps_x = 8
-                center_steps_y = 10
-                logger.info("Fallback Alignment (Blind Center Return).")
-
-            # 5. 真の原点への復帰移動
-            # 現在「右端かつ上端」にいるため、左(-x)、下(-y)に戻すことで中心になります
-            for i in range(center_steps_x):
-                request = self.ptz.create_type('RelativeMove')
-                request.ProfileToken = self.profile_token
-                request.Translation = {'PanTilt': {'x': -step_size_x, 'y': 0.0}}
-                self.ptz.RelativeMove(request)
-                
-                time.sleep(wait_time if video_reader is not None else 0.18)
-                
-                if video_reader is not None:
-                    ret, frame_current = video_reader.read()
-                    if ret and frame_current is not None:
-                        disp = frame_current.copy()
-                        cv2.putText(disp, f"ALIGN: Returning Center X ({i+1}/{center_steps_x})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                        cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
-                        cv2.waitKey(1)
-
-            for i in range(center_steps_y):
-                request = self.ptz.create_type('RelativeMove')
-                request.ProfileToken = self.profile_token
-                request.Translation = {'PanTilt': {'x': 0.0, 'y': -step_size_y}}
-                self.ptz.RelativeMove(request)
-                
-                time.sleep(wait_time if video_reader is not None else 0.18)
-                
-                if video_reader is not None:
-                    ret, frame_current = video_reader.read()
-                    if ret and frame_current is not None:
-                        disp = frame_current.copy()
-                        cv2.putText(disp, f"ALIGN: Returning Center Y ({i+1}/{center_steps_y})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                        cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
-                        cv2.waitKey(1)
+            if not interrupted:
+                logger.info(f"PHASE 4: Returning to Center by Y: {max_steps_y} steps (UP)...")
+                execute_blind_move(0.0, step_size_y, max_steps_y, "Returning Center Y")
 
             time.sleep(1.0)
             self.current_x = 0.0
             self.current_y = 0.0
-            logger.info("Home Alignment completed successfully. Origin established.")
+            if interrupted:
+                logger.warning("Home Alignment was manually bypassed/interrupted. Current position established as (0.0, 0.0).")
+            else:
+                logger.info("Home Alignment completed successfully. Origin established.")
         except Exception as e:
             logger.error(f"Failed to perform Home Alignment: {e}")
-
-
-
 
     def _ptz_worker(self) -> None:
         """キューから移動コマンドを受け取り、カメラを駆動するバックグラウンドスレッド。"""
