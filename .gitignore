@@ -7,6 +7,9 @@ venv/
 env/
 __pycache__/
 *.log
+wiki/
+wiki.db
+wiki.db-journal
 *.onnx
 *.weights
 *.pt

@@ -130,6 +130,12 @@ class AgentTools:
             )
             filepath = f"wiki/auto_{title.lower().replace(' ', '_')}.md"
             
+            # 物理ファイルとしてローカルディスクに保存
+            import os
+            os.makedirs("wiki", exist_ok=True)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(okf_content)
+            
             # MemoryStoreに格納
             self.memory.add_entry(
                 filepath=filepath,
