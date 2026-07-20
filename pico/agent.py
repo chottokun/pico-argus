@@ -246,6 +246,8 @@ class SurveillanceAgent:
                 output = self.tools.clear_tracking_target()
             elif tool_name == "trigger_visual_query":
                 output = await self.tools.trigger_visual_query(int(args.get("track_id", 0)), str(args.get("prompt", "")))
+                # OllamaのVLM処理直後のメモリ・推論スレッド解放を助けるため、1.5秒のウェイトを挿入
+                await asyncio.sleep(1.5)
             elif tool_name == "store_memory":
                 output = self.tools.store_memory(str(args.get("title", "")), str(args.get("content", "")), str(args.get("tags", "")))
             else:

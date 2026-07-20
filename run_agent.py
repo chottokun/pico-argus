@@ -232,7 +232,6 @@ try:
             last_agent_trigger_time = current_time
             # 知覚バッファ情報を引き抜く
             active_tracks_snapshot = perception_buffer.get_active_tracks_json()
-            frame_snapshot = frame.copy()
             
             # エージェントステップをスレッドプールの asyncio で非同期起動
             future = asyncio.run_coroutine_threadsafe(

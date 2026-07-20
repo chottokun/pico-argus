@@ -205,6 +205,7 @@ try:
 
         track_candidates = []
         detected_objects_summary = []
+        frame_snapshot = frame.copy()
 
         # トラッキング中のオブジェクトを描画・分類
         for obj in tracked_objects:
