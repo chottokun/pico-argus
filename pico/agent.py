@@ -131,15 +131,15 @@ class SurveillanceAgent:
     async def node_agent_planner(self, state: AgentState) -> Dict[str, Any]:
         """意思決定ノード: 目標と現状に照らし合わせ、次のツール命令をプランニングする。"""
         prompt = (
-            f"あなたはTapo監視エージェントの司令塔（プランナー）です。\n"
+            f"あなたはTapoカメラエージェントの司令塔（プランナー）です。\n"
             f"現在の状況と、これまでの記憶をもとに、次に取るべきアクションを選択してください。\n\n"
             f"--- [現在の視界メタデータ] ---\n{state['active_tracks_text']}\n\n"
             f"--- [想起された長期記憶Wiki] ---\n{chr(10).join(state['recalled_knowledge']) if state['recalled_knowledge'] else '記憶なし'}\n\n"
-            f"--- [現在の目的 (Goal)] ---\n{state.get('agent_goal', '不審人物の検知および追従')}\n\n"
-            f"--- [自律警戒ルール] ---\n"
-            f"- 視界メタデータ内に '[⚠️WARNING ZONE DETECTED]' がついているターゲットは警戒域内にいます。\n"
-            f"- 警戒域内のターゲットの確信度が低い、または詳細が不明な場合は、まず 'trigger_visual_query' ツールで対象画像（ソフトウェアズーム）を詳しく解析（VLM指示）してください。\n"
-            f"- 解析結果を得た場合は、将来の監視に役立てるために 'store_memory' を使って Wiki にその結果（例: タイトル、詳細内容、タグ）を即座に保存・蓄積してください。\n\n"
+            f"--- [現在の目的 (Goal)] ---\n{state.get('agent_goal', '視界内の人や物体の状態・行動の詳細な観察とWiki記録')}\n\n"
+            f"--- [自律行動ルール] ---\n"
+            f"- 視界メタデータ内に '[⚠️WARNING ZONE DETECTED]' がついているターゲットは、現在変化やアクションが起きている重点監視ゾーンにいます。\n"
+            f"- 重点監視ゾーンのターゲットが何をしていてどのような状態なのか詳細が不明な場合は、まず 'trigger_visual_query' ツールで対象画像（ソフトウェアズーム）を詳しく解析（VLM指示）してください。\n"
+            f"- 解析結果を得た場合は、記録して学習するために 'store_memory' を使って Wiki にその結果（例: タイトル、詳細な様子・状態、タグ）を即座に保存・蓄積してください。\n\n"
             f"--- [使用可能なツールリスト] ---\n"
             f"1. set_tracking_target(track_id: int): 対象IDにカメラ視線を固定\n"
             f"2. clear_tracking_target(): カメラのターゲット固定を解除\n"
@@ -166,11 +166,27 @@ class SurveillanceAgent:
             json_match = re.search(r"\{.*\}", response, re.DOTALL)
             if json_match:
                 plan = json.loads(json_match.group(0))
-                if plan.get("action") == "execute":
+                
+                # ツール名の推測（tool_name または action 自体にツール名が入っている場合に対応する柔軟設計）
+                tool_name = plan.get("tool_name")
+                action_val = plan.get("action")
+                
+                valid_tools = ["set_tracking_target", "clear_tracking_target", "trigger_visual_query", "recall_memory", "store_memory"]
+                
+                target_tool = None
+                if tool_name in valid_tools:
+                    target_tool = tool_name
+                elif action_val in valid_tools:
+                    target_tool = action_val
+                
+                if target_tool or action_val == "execute":
+                    if not target_tool:
+                        target_tool = "set_tracking_target"  # フォールバック
+                    plan["tool_name"] = target_tool
                     return {
                         "next_step": "execute",
                         "tool_output": "",
-                        "agent_goal": f"Execute {plan.get('tool_name')}",
+                        "agent_goal": f"Execute {target_tool}",
                         "next_tool_call": plan
                     }
             
