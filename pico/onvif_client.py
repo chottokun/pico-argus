@@ -2,8 +2,11 @@ import threading
 import queue
 import time
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
+import cv2
+import numpy as np
 from onvif import ONVIFCamera
+from pico.video_reader import RTSPVideoReader
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +16,8 @@ class PTZController:
     def __init__(
         self, ip: str, user: str, password: str, port: int = 2020,
         max_limit_x: float = 1.0, max_limit_y: float = 0.5,
-        align_to_home: bool = False
+        align_to_home: bool = False,
+        video_reader: Optional[RTSPVideoReader] = None
     ) -> None:
         self.ip: str = ip
         self.user: str = user
@@ -47,7 +51,8 @@ class PTZController:
 
         # 起動時に真の中心（原点）に強制復帰するアライメント処理
         if align_to_home:
-            self._align_to_home_position()
+            self._align_to_home_position(video_reader)
+
 
         # スレッド安全なコマンド送信用キュー (最大サイズ1で最新の命令のみ保持)
         self.move_queue: queue.Queue = queue.Queue(maxsize=1)
@@ -56,27 +61,60 @@ class PTZController:
         self.worker_thread: threading.Thread = threading.Thread(target=self._ptz_worker, daemon=True)
         self.worker_thread.start()
 
-    def _align_to_home_position(self) -> None:
-        """カメラを小刻みなステップで最も左下（物理限界）まで駆動させ、そこから真の中心(0.0, 0.0)に位置合わせする。"""
+    def _align_to_home_position(self, video_reader: Optional[RTSPVideoReader] = None) -> None:
+        """カメラを最も左下（物理限界）まで駆動させ、そこから真の中心(0.0, 0.0)に位置合わせする。
+        
+        video_reader が提供されている場合、calibrate_tapo.py と同様にフレーム変化（動き）を監視し、
+        物理限界に突き当たって動きが停止したことを検知して追い込みを自動で切り上げます。
+        """
         logger.info("Starting startup Home Alignment to secure origin...")
         try:
             step_x = -0.15
             step_y = -0.10
             
-            # 1. 左・下へ強制追い込み (12回繰り返し、確実に突き当てる)
-            # 一回ごとに短いディレイ(0.15秒)を挟み、カメラ側の受信制限を回避
-            for _ in range(12):
+            # 1. 左・下へ強制追い込み
+            # 最大25回繰り返し、映像の動きが止まったらその時点でブレイク
+            max_attempts = 25
+            
+            for attempt in range(max_attempts):
+                # 動き検知用の前フレーム取得
+                before_frame = None
+                if video_reader is not None:
+                    ret, frame_data = video_reader.read()
+                    if ret and frame_data is not None:
+                        before_frame = cv2.cvtColor(frame_data.copy(), cv2.COLOR_BGR2GRAY)
+                
+                # 移動コマンド送信
                 request = self.ptz.create_type('RelativeMove')
                 request.ProfileToken = self.profile_token
                 request.Translation = {'PanTilt': {'x': step_x, 'y': step_y}}
                 self.ptz.RelativeMove(request)
-                time.sleep(0.18)
-
-            # 物理的に動きが止まるのを少し待つ
+                
+                # カメラ駆動および RTSP の遅延を待つ
+                # 動き分析を行う場合は少し長めに待つ (calibrate_tapo.py では 1.4秒だが、高速化のため 1.0秒)
+                wait_time = 1.0 if video_reader is not None else 0.18
+                time.sleep(wait_time)
+                
+                # 動的アライメント停止判定 (video_reader がある場合のみ)
+                if video_reader is not None and before_frame is not None:
+                    ret, frame_after = video_reader.read()
+                    if ret and frame_after is not None:
+                        after_gray = cv2.cvtColor(frame_after.copy(), cv2.COLOR_BGR2GRAY)
+                        diff = cv2.absdiff(before_frame, after_gray)
+                        _, thresh = cv2.threshold(diff, 15, 255, cv2.THRESH_BINARY)
+                        moved_ratio = (np.sum(thresh == 255) / thresh.size) * 100
+                        
+                        logger.info(f"Home Alignment Hunt: Step {attempt+1}/{max_attempts} | Motion: {moved_ratio:.2f}%")
+                        
+                        # 動きの変化率が 3% 未満になったら限界突き当てと判定してブレイク
+                        if moved_ratio < 3.0:
+                            logger.info(f"🛑 [Safety Alignment] Physical limit detected at step {attempt+1}. Stopping hunt.")
+                            break
+            
+            # 物理的に完全に動きが止まるのを少し待つ
             time.sleep(1.0)
 
             # 2. 真の物理中心への復帰ステップ計算
-            # 端から中心までの距離 ≒ リミット値をマージンでデスケールした物理ステップ
             target_x_total = self.max_limit_x / 0.85
             target_y_total = self.max_limit_y / 0.85
             
