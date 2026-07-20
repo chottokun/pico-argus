@@ -190,6 +190,7 @@ try:
         if ptz.lock_on_id is not None:
             cv2.putText(frame, f"LOCKED TARGET: ID {ptz.lock_on_id}", (10, info_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
 
+        frame_snapshot = frame.copy()  # YOLO描画前のクリーンなオリジナルフレームを保存
         track_candidates = []
         detected_objects_summary = []
         for obj in tracked_objects:
