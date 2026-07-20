@@ -60,7 +60,7 @@ class PTZController:
         """カメラを小刻みなステップで最も左下（物理限界）まで駆動させ、そこから真の中心(0.0, 0.0)に位置合わせする。"""
         logger.info("Starting startup Home Alignment to secure origin...")
         try:
-            step_x = -0.15
+            step_x = 0.15
             step_y = -0.10
             
             # 1. 左・下へ強制追い込み (12回繰り返し、確実に突き当てる)
@@ -90,7 +90,7 @@ class PTZController:
             for _ in range(steps_to_center_x):
                 request = self.ptz.create_type('RelativeMove')
                 request.ProfileToken = self.profile_token
-                request.Translation = {'PanTilt': {'x': 0.15, 'y': 0.0}}
+                request.Translation = {'PanTilt': {'x': -0.15, 'y': 0.0}}
                 self.ptz.RelativeMove(request)
                 time.sleep(0.18)
 
