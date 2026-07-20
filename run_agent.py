@@ -223,10 +223,19 @@ try:
             frame_snapshot = frame.copy()
             
             # エージェントステップをスレッドプールの asyncio で非同期起動
-            asyncio.run_coroutine_threadsafe(
+            future = asyncio.run_coroutine_threadsafe(
                 agent.step(active_tracks_snapshot, frame_snapshot),
                 agent_loop
             )
+            
+            def agent_done_callback(fut):
+                try:
+                    res = fut.result()
+                    logging.info(f"🧠 [Agent Finished] Planning Step Result: {res}")
+                except Exception as ex:
+                    logging.error(f"❌ [Agent Execution Error] Exception in planning thread: {ex}", exc_info=True)
+
+            future.add_done_callback(agent_done_callback)
             logging.info("🧠 [Agent Dispatch] Dispatched situation metadata to LLM Planner.")
 
         # 優先ターゲットの選定（ロックオン優先）
