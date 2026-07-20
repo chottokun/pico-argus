@@ -157,6 +157,13 @@ class PTZController:
                 logger.warning("Home Alignment was manually bypassed/interrupted. Current position established as (0.0, 0.0).")
             else:
                 logger.info("Home Alignment completed successfully. Origin established.")
+            
+            # アライメントウィンドウのクリーンアップ
+            if video_reader is not None:
+                try:
+                    cv2.destroyWindow("Tapo ONVIF YOLOv8 Experiment System")
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"Failed to perform Home Alignment: {e}")
 
