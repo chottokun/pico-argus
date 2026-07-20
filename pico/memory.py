@@ -10,8 +10,7 @@ class MemoryStore:
 
     def __init__(self, db_path: str = "wiki.db") -> None:
         self.db_path: str = db_path
-        # 単一のコネクションを保持し、メモリ内DBでもテーブルスキーマが失われないようにする
-        self.conn: sqlite3.Connection = sqlite3.connect(self.db_path)
+        self.conn: sqlite3.Connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self._init_db()
 
     def _init_db(self) -> None:
