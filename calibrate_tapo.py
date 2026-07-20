@@ -2,11 +2,11 @@ import cv2
 import numpy as np
 import time
 import json
-import threading
 from dotenv import load_dotenv
 from onvif import ONVIFCamera
 
-from camera_config import build_rtsp_url, require_env
+from pico.config import AppConfig, build_rtsp_url
+from pico.video_reader import RTSPVideoReader
 
 # =====================================================================
 # ⚙️ 【カメラ・通信環境に合わせた調整パラメータ】
@@ -21,13 +21,16 @@ PIXEL_DIFF_THRESHOLD = 15  # 画素の差分しきい値 (0〜255)
 # =====================================================================
 
 load_dotenv()
-TAPO_USER = require_env("TAPO_USER")
-TAPO_PASS = require_env("TAPO_PASS")
-TAPO_IP = require_env("TAPO_IP")
+try:
+    config = AppConfig(config_path="tapo_config_temp.json")  # キャリブ前の為、一時パス
+except Exception as e:
+    # 必須環境変数がない場合は例外が発生する
+    print(f"❌ 設定読み込みエラー: {e}")
+    raise SystemExit(1)
 
 # --- 🛠️ 1. ONVIFの初期化 ---
 try:
-    mycam = ONVIFCamera(TAPO_IP, 2020, TAPO_USER, TAPO_PASS)
+    mycam = ONVIFCamera(config.tapo_ip, 2020, config.tapo_user, config.tapo_pass)
     ptz = mycam.create_ptz_service()
     media = mycam.create_media_service()
     profiles = media.GetProfiles()
@@ -36,47 +39,15 @@ except Exception as e:
     print(f"❌ 初期化エラー: {e}")
     raise SystemExit(1)
 
-# --- 📹 2. RTSPバッファ自動消滅スレッドクラス ---
-class RTSPVideoReader:
-    def __init__(self, url):
-        self.cap = cv2.VideoCapture(url)
-        self.frame = None
-        self.ret = False
-        self.running = True
-        self.thread = threading.Thread(target=self._keep_reading, daemon=True)
-        self.thread.start()
-
-    def _keep_reading(self):
-        while self.running:
-            if not self.cap.isOpened():
-                break
-            try:
-                ret, frame = self.cap.read()
-                if ret:
-                    self.frame = frame
-                    self.ret = ret
-                else:
-                    time.sleep(0.01)
-            except Exception:
-                break
-
-    def read(self):
-        return self.ret, self.frame
-
-    def release(self):
-        self.running = False
-        time.sleep(0.2)
-        if self.cap.isOpened():
-            self.cap.release()
-
 # スレッド駆動の映像読み込みを開始
-rtsp_url = build_rtsp_url(TAPO_USER, TAPO_PASS, TAPO_IP, "stream1")
+rtsp_url = build_rtsp_url(config.tapo_user, config.tapo_pass, config.tapo_ip, "stream1")
 video_reader = RTSPVideoReader(rtsp_url)
 
 time.sleep(1.0)
 ret, test_frame = video_reader.read()
 if not ret or test_frame is None:
     print("❌ 映像ストリームを正常に受信できませんでした。")
+    video_reader.release()
     raise SystemExit(1)
 
 
@@ -160,7 +131,6 @@ center_steps_y = total_steps_y // 2
 print(f"\n🔄 計測完了（左右総幅: {total_steps_x}歩 / 上下総幅: {total_steps_y}歩）")
 print("🔄 物理的な【真の中心原点】へカメラを移動しています...")
 
-# 💡【修正】左右のセンター復帰を画面に映す
 for i in range(center_steps_x):
     ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': -STEP_SIZE_X, 'y': 0.0}}})
     time.sleep(RTSP_LAG_TIMEOUT)
@@ -173,7 +143,6 @@ for i in range(center_steps_x):
             cv2.imshow("Tapo C210 Dynamic Calibration Wizard", display_frame)
             cv2.waitKey(1)
 
-# 💡【修正】上下のセンター復帰を画面に映す
 for i in range(center_steps_y):
     ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': 0.0, 'y': -STEP_SIZE_Y}}})
     time.sleep(RTSP_LAG_TIMEOUT)

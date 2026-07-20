@@ -1,82 +1,36 @@
 import cv2
-import threading
 from dotenv import load_dotenv
-from onvif import ONVIFCamera
-
-from camera_config import build_rtsp_url, require_env
+from pico.config import AppConfig, build_rtsp_url
+from pico.onvif_client import PTZController
 
 # 環境変数の読み込み
 load_dotenv()
 
-# ONVIF経由の場合、アプリのEMAIL/PASSWORDは【完全に不要】です！
-TAPO_USER = require_env("TAPO_USER")  # アプリの高度な設定で作ったユーザー名
-TAPO_PASS = require_env("TAPO_PASS")  # アプリの高度な設定で作ったパスワード
-TAPO_IP = require_env("TAPO_IP")
-
-
-def init_onvif_client():
-    """ONVIF規格を使ってカメラの制御権を取得する"""
-    print(f"ONVIF接続試行: {TAPO_IP}:2020 (user={TAPO_USER})")
-    try:
-        # TapoカメラのONVIFポートは「2020」で固定です
-        mycam = ONVIFCamera(TAPO_IP, 2020, TAPO_USER, TAPO_PASS)
-        
-        # 必要な制御サービスを立ち上げる
-        media = mycam.create_media_service()
-        ptz = mycam.create_ptz_service()
-        
-        # カメラの制御用トークン（識別ID）を取得
-        media_profile = media.GetProfiles()[0]
-        profile_token = media_profile.token
-        
-        return ptz, profile_token
-    except Exception as e:
-        raise RuntimeError(f"ONVIF接続エラー: {e}\n※カメラアカウントのパスワードが正しいか、30分ロックが明けているか確認してください。")
-
-
-# ONVIFの初期化
+# 設定と PTZ コントローラーの初期化
 try:
-    ptz, token = init_onvif_client()
-    print("✅ ONVIF認証成功: 業界標準規格での制御権を取得しました。")
+    config = AppConfig()
+    ptz = PTZController(
+        ip=config.tapo_ip,
+        user=config.tapo_user,
+        password=config.tapo_pass,
+        max_limit_x=config.max_limit_x,
+        max_limit_y=config.max_limit_y
+    )
+    print("✅ ONVIF 接続成功: 共通モジュール経由で制御権を取得しました。")
 except Exception as e:
-    print(str(e))
+    print(f"❌ 初期化エラー: {e}")
     exit(1)
 
-# --- 🔒 安全対策：ソフトウェアリミットの設定（ONVIF仕様） ---
-# ONVIFでは位置や移動量を -1.0 〜 1.0 の小数の範囲で制御します
-current_x = 0.0
-current_y = 0.0
-
-LIMIT_X = 1.0     # 左右の最大リミット
-LIMIT_Y = 0.5     # 上下の最大リミット
-MOVE_STEP = 0.05  # 1回のキー入力で動く量（小数を小さくするとゆっくり動きます）
-
-def async_move(x, y):
-    """映像（メインスレッド）をカクつかせないために別スレッドで通信"""
-    def _target():
-        try:
-            # ONVIFの「相対移動（RelativeMove）」命令を作成
-            request = ptz.create_type('RelativeMove')
-            request.ProfileToken = token
-            request.Translation = {
-                'PanTilt': {
-                    'x': x,
-                    'y': y
-                }
-            }
-            ptz.RelativeMove(request)
-        except Exception as e:
-            print(f"モーター駆動エラー: {e}")
-            
-    threading.Thread(target=_target, daemon=True).start()
-
+# 操作用定数
+MOVE_STEP = 0.05  # 1回のキー入力で動く量
 
 # RTSPストリームの開始
-rtsp_url = build_rtsp_url(TAPO_USER, TAPO_PASS, TAPO_IP, "stream1")
+rtsp_url = build_rtsp_url(config.tapo_user, config.tapo_pass, config.tapo_ip, "stream1")
 cap = cv2.VideoCapture(rtsp_url)
 
 if not cap.isOpened():
     print("映像ストリームの開始に失敗しました。")
+    ptz.shutdown()
     exit()
 
 print("\n=== 🕹️ 操作方法 ===")
@@ -85,59 +39,56 @@ print("  A : 左に動かす / D : 右に動かす")
 print("  Q : プログラム終了")
 print("===================\n")
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("映像を取得できませんでした。")
-        break
+try:
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("映像を取得できませんでした。")
+            break
 
-    # ウィンドウに映像を表示
-    cv2.imshow("Tapo Camera ONVIF Control Stream", frame)
+        # ウィンドウに映像を表示
+        cv2.imshow("Tapo Camera ONVIF Control Stream", frame)
 
-    # キー入力を1ミリ秒待機
-    key = cv2.waitKey(1) & 0xFF
+        # キー入力を1ミリ秒待機
+        key = cv2.waitKey(1) & 0xFF
 
-    if key == ord('q'):
-        break
-    
-    # 【上】移動
-    elif key == ord('w'):
-        if current_y < LIMIT_Y:
-            current_y += MOVE_STEP
-            async_move(0, MOVE_STEP)
-            print(f"【上】へ移動 (現在の推測位置 Y: {current_y:.2f})")
-        else:
-            print("❌【警告】これ以上、上には動かせません（リミット制限）")
+        if key == ord('q'):
+            break
+        
+        # 【上】移動
+        elif key == ord('w'):
+            actual_x, actual_y = ptz.safe_move(0.0, MOVE_STEP)
+            if actual_x != 0.0 or actual_y != 0.0:
+                print(f"【上】へ移動 (現在の推測位置 X: {ptz.current_x:.2f}, Y: {ptz.current_y:.2f})")
+            else:
+                print("❌【警告】これ以上、上には動かせません（リミット制限）")
 
-    # 【下】移動
-    elif key == ord('s'):
-        if current_y > -LIMIT_Y:
-            current_y -= MOVE_STEP
-            async_move(0, -MOVE_STEP)
-            print(f"【下】へ移動 (現在の推測位置 Y: {current_y:.2f})")
-        else:
-            print("❌【警告】これ以上、下には動かせません（リミット制限）")
+        # 【下】移動
+        elif key == ord('s'):
+            actual_x, actual_y = ptz.safe_move(0.0, -MOVE_STEP)
+            if actual_x != 0.0 or actual_y != 0.0:
+                print(f"【下】へ移動 (現在の推測位置 X: {ptz.current_x:.2f}, Y: {ptz.current_y:.2f})")
+            else:
+                print("❌【警告】これ以上、下には動かせません（リミット制限）")
 
-    # 【左】移動
-    elif key == ord('a'):
-        if current_x > -LIMIT_X:
-            current_x -= MOVE_STEP
-            # 💡 もしキーの操作と実際の画面の左右が逆に見える場合は、符号を反転（MOVE_STEP）にしてください
-            async_move(-MOVE_STEP, 0)
-            print(f"【左】へ移動 (現在の推測位置 X: {current_x:.2f})")
-        else:
-            print("❌【警告】これ以上、左には動かせません（リミット制限）")
+        # 【左】移動
+        elif key == ord('a'):
+            actual_x, actual_y = ptz.safe_move(-MOVE_STEP, 0.0)
+            if actual_x != 0.0 or actual_y != 0.0:
+                print(f"【左】へ移動 (現在の推測位置 X: {ptz.current_x:.2f}, Y: {ptz.current_y:.2f})")
+            else:
+                print("❌【警告】これ以上、左には動かせません（リミット制限）")
 
-    # 【右】移動
-    elif key == ord('d'):
-        if current_x < LIMIT_X:
-            current_x += MOVE_STEP
-            # 💡 もしキーの操作と実際の画面の左右が逆に見える場合は、符号を反転（-MOVE_STEP）にしてください
-            async_move(MOVE_STEP, 0)
-            print(f"【右】へ移動 (現在の推測位置 X: {current_x:.2f})")
-        else:
-            print("❌【警告】これ以上、右には動かせません（リミット制限）")
+        # 【右】移動
+        elif key == ord('d'):
+            actual_x, actual_y = ptz.safe_move(MOVE_STEP, 0.0)
+            if actual_x != 0.0 or actual_y != 0.0:
+                print(f"【右】へ移動 (現在の推測位置 X: {ptz.current_x:.2f}, Y: {ptz.current_y:.2f})")
+            else:
+                print("❌【警告】これ以上、右には動かせません（リミット制限）")
 
-# 後片付け
-cap.release()
-cv2.destroyAllWindows()
+finally:
+    # 後片付け
+    cap.release()
+    cv2.destroyAllWindows()
+    ptz.shutdown()
