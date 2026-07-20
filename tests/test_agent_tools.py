@@ -82,5 +82,5 @@ def test_agent_tools_memory_handling() -> None:
     
     # 保存 (Store) の検証
     store_res = tools.store_memory("new_info", "Testing content", "test tag")
-    assert "Successfully stored new knowledge" in store_res
+    assert "Successfully appended new knowledge" in store_res
     mock_memory.add_entry.assert_called_once()

@@ -109,6 +109,7 @@ class AgentTools:
 
     def store_memory(self, title: str, content: str, tags: str) -> str:
         """新しい情報や分析結果を OKF (Open Knowledge Format) に準拠した構造で長期記憶に書き込む。
+        既に同じ知識（ファイル）が存在する場合は、内容をタイムスタンプ付きで時系列に追記する。
 
         Args:
             title (str): 知識のタイトル
@@ -117,22 +118,49 @@ class AgentTools:
         """
         logger.info(f"🔧 [Tool Call: store_memory] Title: '{title}', Tags: '{tags}'")
         try:
-            # OKF Markdown構造を作成
-            okf_content = (
-                f"---\n"
-                f"title: {title}\n"
-                f"tags: {tags}\n"
-                f"doc_type: knowledge\n"
-                f"provenance_source: Agent V2 active_perception\n"
-                f"provenance_confidence: High\n"
-                f"---\n\n"
-                f"{content}"
-            )
-            filepath = f"wiki/auto_{title.lower().replace(' ', '_')}.md"
+            from datetime import datetime
+            import os
+            
+            # 安全なファイルパスの構築
+            safe_title = title.lower().replace(' ', '_').replace('/', '_')
+            filepath = f"wiki/auto_{safe_title}.md"
+            os.makedirs("wiki", exist_ok=True)
+            
+            timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 既存のコンテンツが存在するかチェックして追記処理を行う
+            existing_content = ""
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        existing_content = f.read()
+                except Exception:
+                    pass
+
+            if existing_content:
+                # 既存の Frontmatter を維持しつつ、本文の末尾に追記する
+                parts = existing_content.split("---\n")
+                if len(parts) >= 3:
+                    frontmatter = parts[1]
+                    body = "---\n".join(parts[2:])
+                    updated_body = body.strip() + f"\n\n### 🕒 観測記録: {timestamp_str}\n{content}"
+                    okf_content = f"---\n{frontmatter}---\n\n{updated_body}"
+                else:
+                    okf_content = existing_content.strip() + f"\n\n---\n### 🕒 観測記録: {timestamp_str}\n{content}"
+            else:
+                # 新規作成用 OKF テンプレート
+                okf_content = (
+                    f"---\n"
+                    f"title: {title}\n"
+                    f"tags: {tags}\n"
+                    f"doc_type: knowledge\n"
+                    f"provenance_source: Agent V2 active_perception\n"
+                    f"provenance_confidence: High\n"
+                    f"---\n\n"
+                    f"### 🕒 観測記録: {timestamp_str}\n{content}"
+                )
             
             # 物理ファイルとしてローカルディスクに保存
-            import os
-            os.makedirs("wiki", exist_ok=True)
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(okf_content)
             
@@ -144,7 +172,7 @@ class AgentTools:
                 tags=tags,
                 content=okf_content
             )
-            return f"Successfully stored new knowledge to '{filepath}'."
+            return f"Successfully appended new knowledge to '{filepath}'."
         except Exception as e:
             logger.error(f"Failed to store memory: {e}")
             return f"Error: Failed to store memory: {e}"

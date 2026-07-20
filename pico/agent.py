@@ -157,12 +157,13 @@ class SurveillanceAgent:
             f"--- [自律行動ルール] ---\n"
             f"- 視界メタデータ内に '[⚠️WARNING ZONE DETECTED]' がついているターゲットは、現在変化やアクションが起きている重点監視ゾーンにいます。\n"
             f"- 重点監視ゾーンのターゲットが何をしていてどのような状態なのか詳細が不明な場合は、まず 'trigger_visual_query' ツールで対象画像（ソフトウェアズーム）を詳しく解析（VLM指示）してください。\n"
-            f"- 解析結果を得た場合は、記録して学習するために 'store_memory' を使って Wiki にその結果（例: タイトル、詳細な様子・状態、タグ）を即座に保存・蓄積してください。\n\n"
+            f"- 解析結果を得た場合は、記録して学習するために 'store_memory' を使って Wiki にその結果を即座に保存・蓄積してください。\n"
+            f"  ⚠️重要: 'store_memory' を呼ぶ際は、一時的なID固有のタイトル（例: 'person_34' や 'yellow_package_id5'）は絶対に使用しないでください。代わりに、必ずカテゴリごとに統合された永続的なタイトル（例: 'observed_people' や 'observed_objects'）を使用してください。同じタイトルを指定すると、システムが自動的に同一ファイルへタイムスタンプ付きで追記（ログ化）します。\n\n"
             f"--- [使用可能なツールリスト] ---\n"
             f"1. set_tracking_target(track_id: int): 対象IDにカメラ視線を固定\n"
             f"2. clear_tracking_target(): カメラのターゲット固定を解除\n"
             f"3. trigger_visual_query(track_id: int, prompt: str): 対象の画像をスポットクロップ・アップスケーリング解析\n"
-            f"4. store_memory(title: str, content: str, tags: str): Wikiに新たな知識をOKF Markdown形式で追加\n\n"
+            f"4. store_memory(title: str, content: str, tags: str): Wikiに新たな知識をOKF Markdown形式で追加（既存ファイルがある場合は自動追記）\n\n"
             f"次のJSONフォーマットのみで厳密に返答してください（他の説明テキストは一切出力しないでください）:\n"
             f'{{"action": "execute", "tool_name": "set_tracking_target", "args": {{"track_id": 1}}}}\n'
             f'または、特に対処が必要ない、あるいは完了した場合は:\n'
