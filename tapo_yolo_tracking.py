@@ -16,6 +16,7 @@ from pico.tracker import SimpleIoUTracker
 from pico.ollama_client import OllamaVisionClient
 from pico.memory import MemoryStore
 from pico.cognition import CognitionEngine
+from pico.guardrails import GuardRails, FrameStatus
 
 # --- 📁 0. ログシステムの設定 ---
 log_format = "%(asctime)s [%(levelname)s] %(message)s"
@@ -56,7 +57,7 @@ except Exception as e:
     logging.error(f"ONVIF初期化エラー: {e}")
     raise SystemExit(1)
 
-# --- 🎯 1. 制御用パラメータ & PID制御器/検出器/トラッカーの初期化 ---
+# --- 🎯 1. 制御用パラメータ & 各モジュールの初期化 ---
 TRACK_TARGET_ID = 0  # COCOでの 'person' ID は 0
 CONF_THRESHOLD = 0.45
 TARGET_CONF_THRESHOLD = 0.60
@@ -65,7 +66,7 @@ pid = AdaptivePIDController(
     kp_base=0.35,
     ki=0.03,
     kd=0.005,
-    dead_zone=0.10,
+    dead_zone=0.10,    # 通常時の不感帯
     min_speed=0.03,
     max_step=0.12,
     integral_limit=0.2
@@ -80,26 +81,24 @@ if not os.path.exists(onnx_path):
 
 detector = YoloDetector(model_path=onnx_path, conf_threshold=CONF_THRESHOLD)
 tracker = SimpleIoUTracker(iou_threshold=0.3, max_lost_frames=3)
+guard = GuardRails(timeout_limit=3.0, max_area_ratio=0.75)
 
 TRACK_INTERVAL = 0.45
 last_move_time = 0.0
 
 # --- 🧠 2. 認知ループ（Ollama + SQLite 長期記憶）のバックグラウンド起動 ---
-# SQLite の準備と初期知識の注入
 memory_store = MemoryStore(db_path="wiki.db")
-# 初期テスト用のルール知識を追加しておく
 memory_store.add_entry(
     filepath="rules/general.md",
     doc_type="rule",
     title="エッジセキュリティ基本指示",
     tags="security person warning",
-    content="人(person)を検知した場合、速やかに不審な行動をしていないか分析し、ログに記録すること。Ollamaのモデル gemma4:e2b は最優先でテスト使用すること。"
+    content="人(person)を検知した場合、不審行動を分析すること。gemma4:e2bは最優先で使用すること。"
 )
 
 vlm_client = OllamaVisionClient(base_url=config.ollama_base_url, model=config.ollama_model)
 cognition_engine = CognitionEngine(vlm_client=vlm_client, memory_store=memory_store)
 
-# 別スレッドで asyncio イベントループを立ち上げる
 cognition_loop = asyncio.new_event_loop()
 
 def start_cognition_thread(loop):
@@ -113,7 +112,6 @@ cognition_thread = threading.Thread(
 )
 cognition_thread.start()
 
-# すでに認知処理に投入した ID の追跡記録（重複分析防止）
 submitted_track_ids = set()
 
 # --- 📹 3. RTSP映像ストリームの開始 ---
@@ -131,28 +129,59 @@ if not ret or test_frame is None:
 width, height = int(test_frame.shape[1]), int(test_frame.shape[0])
 center_x, center_y = width // 2, height // 2
 
-logging.info("🚀 反射＆非同期認知ハイブリッド追尾システム稼働！")
+logging.info("🚀 反射・認知・安全ガードレール統合追尾システム稼働！")
 
 try:
     while True:
+        # 🔒 安全ガードレール: フレーム時間監視 (RTSP断絶検知)
+        last_frame_t = video_reader.get_last_frame_time()
+        frame_health = guard.check_frame_health(last_frame_t)
+        
+        if frame_health == FrameStatus.TIMEOUT:
+            logging.warning("⚠️ [Safety Guard] RTSP feed lost. Pausing control loop...")
+            pid.reset()  # 積分値リセット
+            time.sleep(0.5)
+            continue
+
         ret, frame = video_reader.read()
         if not ret or frame is None:
             time.sleep(0.01)
             continue
 
+        # 🔒 安全ガードレール: 夜間低照度の自動検知とパラメータ自動チューニング
+        is_night = guard.check_night_mode(frame)
+        if is_night:
+            # 夜間は不感帯を 5% に狭めて反応性を引き上げる
+            pid.dead_zone = 0.05
+        else:
+            pid.dead_zone = 0.10
+
         # 検出と追跡の実行
         detections = detector.detect(frame)
-        tracked_objects = tracker.update(detections)
+        
+        # 🔒 安全ガードレール: ハルシネーション（異常面積BBox）のフィルタリング
+        sane_detections = []
+        for det in detections:
+            if guard.is_bbox_sane(det.bbox, frame.shape):
+                sane_detections.append(det)
+        
+        tracked_objects = tracker.update(sane_detections)
 
         # ガイドライン描画
         cv2.line(frame, (center_x, 0), (center_x, height), (255, 0, 0), 1)
         cv2.line(frame, (0, center_y), (width, center_y), (255, 0, 0), 1)
+        
+        # 現在の不感帯を黄色い枠で描画
         cv2.rectangle(
             frame, 
             (center_x - int(width * pid.dead_zone), center_y - int(height * pid.dead_zone)), 
             (center_x + int(width * pid.dead_zone), center_y + int(height * pid.dead_zone)), 
             (0, 255, 255), 1
         )
+        
+        # 夜間検知時の表示
+        if is_night:
+            cv2.putText(frame, "NIGHT MODE ACTIVE (DeadZone: 5%)", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
         track_candidates = []
         detected_objects_summary = []
@@ -166,24 +195,20 @@ try:
             
             detected_objects_summary.append(f"{class_name}#{track_id}({conf:.2f})")
 
-            # ターゲット条件判定
             if cid == TRACK_TARGET_ID and conf >= TARGET_CONF_THRESHOLD:
                 color = (0, 255, 0)
                 track_candidates.append(obj)
                 
                 # 🧠 認知イベントの非同期トリガー
-                # まだ分析していない新しいターゲットIDであれば、画像を切り出してバックグラウンド認知ループへ送る
                 if track_id not in submitted_track_ids:
                     submitted_track_ids.add(track_id)
                     
-                    # 分析用フレームのコピーを作成
                     analysis_frame = frame.copy()
                     event = {
                         "class_name": class_name,
                         "track_id": track_id,
                         "frame": analysis_frame
                     }
-                    # スレッド安全にイベントを投入
                     cognition_engine.trigger_event_from_thread(event, cognition_loop)
                     logging.info(f"🧠 [Event Triggered] Sent {class_name}#{track_id} to Cognition Loop.")
             else:
@@ -192,7 +217,7 @@ try:
             cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
             cv2.putText(frame, f"{class_name}#{track_id}: {conf:.2f}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-        # 最も面積が大きい人を優先追尾ターゲットに選定
+        # 優先ターゲットの選定
         main_track_obj = None
         if len(track_candidates) > 0:
             main_track_obj = max(track_candidates, key=lambda o: o.bbox[2] * o.bbox[3])
@@ -232,11 +257,9 @@ try:
 
 finally:
     logging.info("🛑 システム終了処理...")
-    # 認知ループと接続のクリーンアップ
     cognition_loop.call_soon_threadsafe(cognition_loop.stop)
     cognition_thread.join(timeout=1.0)
     
-    # httpx/sqlite セッションのクローズ
     asyncio.run(vlm_client.close())
     memory_store.close()
     
