@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from pico.config import AppConfig, build_rtsp_url
 from pico.video_reader import RTSPVideoReader
 from pico.onvif_client import PTZController
+from pico.pid_controller import AdaptivePIDController
 
 # --- 📁 0. ログシステムの設定 ---
 log_format = "%(asctime)s [%(levelname)s] %(message)s"
@@ -49,16 +50,24 @@ except Exception as e:
     logging.error(f"ONVIF初期化エラー: {e}")
     raise SystemExit(1)
 
-# --- 🎯 1. トラッキング制御用パラメータ ---
+# --- 🎯 1. 制御用パラメータ & PID制御器初期化 ---
 TRACK_TARGET_ID = 0          
 CONF_THRESHOLD = 0.45        
 TARGET_CONF_THRESHOLD = 0.60 
 
-KP_X = 0.18            
-KP_Y = 0.16            
-MAX_STEP = 0.12        
-TRACK_INTERVAL = 0.45  
-last_move_time = 0
+# 適応型PIDコントローラーの定義
+pid = AdaptivePIDController(
+    kp_base=0.35,      # 基本比例感度 (0.18 から段階的に適応)
+    ki=0.03,           # 積分ゲイン
+    kd=0.005,          # 微分ゲイン
+    dead_zone=0.10,    # 10%の不感帯
+    min_speed=0.03,    # 静止摩擦突破の最小移動量
+    max_step=0.12,     # 最大リミッター
+    integral_limit=0.2 # 積分リミッター
+)
+
+TRACK_INTERVAL = 0.45  # 命令送信最小間隔（秒）
+last_move_time = 0.0
 
 # --- 📹 2. RTSP映像ストリームの開始 ---
 rtsp_url = build_rtsp_url(config.tapo_user, config.tapo_pass, config.tapo_ip, "stream1")
@@ -75,11 +84,6 @@ if not ret or test_frame is None:
 width, height = int(test_frame.shape[1]), int(test_frame.shape[0])
 center_x, center_y = width // 2, height // 2
 
-DEAD_ZONE_X = int(width * 0.15)  
-DEAD_ZONE_Y = int(height * 0.10) 
-
-x_factor, y_factor = width / 640, height / 640
-
 # --- 🚶 3. YOLOv8-small ONNXモデルの準備 ---
 onnx_path = "yolov8s.onnx"
 if not os.path.exists(onnx_path):
@@ -90,7 +94,9 @@ if not os.path.exists(onnx_path):
 net = cv2.dnn.readNetFromONNX(onnx_path)
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 
-logging.info("🚀 上下キビキビ追尾システム稼働！")
+x_factor, y_factor = width / 640, height / 640
+
+logging.info("🚀 適応型PID追尾システム稼働！")
 
 try:
     while True:
@@ -122,10 +128,15 @@ try:
         if len(indices) > 0:
             indices = np.array(indices).flatten()
 
-        # ガイドライン描画
+        # ガイドライン描画（PIDの不感帯枠を画面に可視化）
         cv2.line(frame, (center_x, 0), (center_x, height), (255, 0, 0), 1)
         cv2.line(frame, (0, center_y), (width, center_y), (255, 0, 0), 1)
-        cv2.rectangle(frame, (center_x - DEAD_ZONE_X, center_y - DEAD_ZONE_Y), (center_x + DEAD_ZONE_X, center_y + DEAD_ZONE_Y), (0, 255, 255), 1)
+        cv2.rectangle(
+            frame, 
+            (center_x - int(width * pid.dead_zone), center_y - int(height * pid.dead_zone)), 
+            (center_x + int(width * pid.dead_zone), center_y + int(height * pid.dead_zone)), 
+            (0, 255, 255), 1
+        )
 
         track_candidates = []
         detected_objects_summary = []
@@ -155,28 +166,31 @@ try:
             cv2.circle(frame, (person_cx, person_cy), 6, (0, 0, 255), -1)
 
         # --- ⏱️ モーター制御 ---
-        current_time = time.time()
-        if current_time - last_move_time > TRACK_INTERVAL:
+        current_time = time.monotonic()
+        dt = current_time - last_move_time
+
+        if dt > TRACK_INTERVAL:
             if detected_objects_summary:
                 logging.info(f"👁️ 画面内の検知状況: {', '.join(detected_objects_summary)}")
                 
-            move_x, move_y = 0.0, 0.0
             if main_track_idx is not None:
                 mx, my, mw, mh = boxes[main_track_idx]
                 person_cx, person_cy = mx + mw // 2, my + mh // 2
-                error_x = person_cx - center_x
-                error_y = center_y - person_cy
-
-                if abs(error_x) > DEAD_ZONE_X:
-                    move_x = -float(error_x / center_x) * KP_X
-                    move_x = np.clip(move_x, -MAX_STEP, MAX_STEP)
-                    
-                if abs(error_y) > DEAD_ZONE_Y:
-                    move_y = float(error_y / center_y) * KP_Y
-                    move_y = np.clip(move_y, -MAX_STEP, MAX_STEP)
-
-                if move_x != 0.0 or move_y != 0.0:
-                    ptz.safe_move(move_x, move_y)
+                
+                # 正規化された座標(0.0〜1.0)に変換
+                norm_cx = person_cx / width
+                norm_cy = person_cy / height
+                
+                # PID計算により移動ステップ(dx, dy)を算出
+                # ONVIFは右・上がプラス、画面は右・下がプラスのためY軸の入力を反転
+                dx, dy = pid.calculate_step(norm_cx, 1.0 - norm_cy, dt)
+                
+                # 移動の実行
+                if dx != 0.0 or dy != 0.0:
+                    ptz.safe_move(dx, dy)
+            else:
+                # ターゲットロスト時は積分値をリセットして暴走を防止
+                pid.reset()
             
             last_move_time = current_time
 
