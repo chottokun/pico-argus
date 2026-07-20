@@ -13,7 +13,7 @@ class OllamaVisionClient:
     def __init__(self, base_url: str = "http://localhost:11434", model: str = "gemma4:e2b") -> None:
         self.base_url: str = base_url
         self.model: str = model
-        self.client: httpx.AsyncClient = httpx.AsyncClient(timeout=10.0)
+        self.client: httpx.AsyncClient = httpx.AsyncClient(timeout=45.0)
 
     async def health_check(self) -> bool:
         """Ollama サーバーが起動し、応答するかヘルスチェックを実行する。"""
@@ -68,7 +68,7 @@ class OllamaVisionClient:
                 logger.error(f"Ollama API returned error status {response.status_code}: {response.text}")
                 return None
         except Exception as e:
-            logger.error(f"Failed to call Ollama API at {self.base_url}: {e}")
+            logger.error(f"Failed to call Ollama API at {self.base_url}: {e} (Type: {type(e).__name__})", exc_info=True)
             return None
 
     async def close(self) -> None:
