@@ -57,39 +57,60 @@ class PTZController:
         self.worker_thread.start()
 
     def _align_to_home_position(self) -> None:
-        """カメラを最も左下（物理限界）まで駆動させ、そこから設定リミット値分戻して真の中心(0.0, 0.0)に位置合わせする。"""
+        """カメラを小刻みなステップで最も左下（物理限界）まで駆動させ、そこから真の中心(0.0, 0.0)に位置合わせする。"""
         logger.info("Starting startup Home Alignment to secure origin...")
         try:
-            # 1. 最も左・下へ強制追い込み (安全のため十分な幅を複数ステップに分けて送信)
-            # キャリブレーションが X: 1.08, Y: 0.85 なので、1.5以上動かせば確実に端に突き当たる
-            # 一括で大きな値を送るより、安定のために 2ステップに分ける
-            for _ in range(2):
+            step_x = -0.15
+            step_y = -0.10
+            
+            # 1. 左・下へ強制追い込み (12回繰り返し、確実に突き当てる)
+            # 一回ごとに短いディレイ(0.15秒)を挟み、カメラ側の受信制限を回避
+            for _ in range(12):
                 request = self.ptz.create_type('RelativeMove')
                 request.ProfileToken = self.profile_token
-                # Xは左がマイナス、Yは下がマイナス
-                request.Translation = {'PanTilt': {'x': -1.2, 'y': -1.2}}
+                request.Translation = {'PanTilt': {'x': step_x, 'y': step_y}}
                 self.ptz.RelativeMove(request)
-                time.sleep(1.2)  # カメラが動き切るまで待つ
+                time.sleep(0.18)
 
-            # 2. 端に突き当たった状態から、キャリブレーションで定義された限界幅分だけ逆方向（右・上）に動かす
-            # これにより「真の中心（原点）」に正確にアライメントされる
-            request = self.ptz.create_type('RelativeMove')
-            request.ProfileToken = self.profile_token
+            # 物理的に動きが止まるのを少し待つ
+            time.sleep(1.0)
+
+            # 2. 真の物理中心への復帰ステップ計算
             # 端から中心までの距離 ≒ リミット値をマージンでデスケールした物理ステップ
-            # （キャリブ限界はマージン85%なので、0.85で割って戻すことで真の物理中心へ補正）
-            target_x = self.max_limit_x / 0.85
-            target_y = self.max_limit_y / 0.85
+            target_x_total = self.max_limit_x / 0.85
+            target_y_total = self.max_limit_y / 0.85
             
-            request.Translation = {'PanTilt': {'x': target_x, 'y': target_y}}
-            self.ptz.RelativeMove(request)
-            time.sleep(1.5)
+            # 各軸の必要歩数
+            steps_to_center_x = int(round(target_x_total / 0.15))
+            steps_to_center_y = int(round(target_y_total / 0.10))
 
-            # 現在の推測位置を 0.0 にリセット
+            logger.info(f"Returning to Center: X steps={steps_to_center_x}, Y steps={steps_to_center_y}")
+
+            # X軸のセンター復帰
+            for _ in range(steps_to_center_x):
+                request = self.ptz.create_type('RelativeMove')
+                request.ProfileToken = self.profile_token
+                request.Translation = {'PanTilt': {'x': 0.15, 'y': 0.0}}
+                self.ptz.RelativeMove(request)
+                time.sleep(0.18)
+
+            # Y軸のセンター復帰
+            for _ in range(steps_to_center_y):
+                request = self.ptz.create_type('RelativeMove')
+                request.ProfileToken = self.profile_token
+                request.Translation = {'PanTilt': {'x': 0.0, 'y': 0.10}}
+                self.ptz.RelativeMove(request)
+                time.sleep(0.18)
+
+            # 最終的な位置が落ち着くのを待つ
+            time.sleep(1.0)
+
             self.current_x = 0.0
             self.current_y = 0.0
-            logger.info(f"Home Alignment completed. Position calibrated to origin (0.0, 0.0). Target values were X: {target_x:.2f}, Y: {target_y:.2f}")
+            logger.info("Home Alignment completed. Position calibrated to origin (0.0, 0.0).")
         except Exception as e:
             logger.error(f"Failed to perform Home Alignment: {e}")
+
 
 
     def _ptz_worker(self) -> None:
