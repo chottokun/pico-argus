@@ -51,10 +51,9 @@ async def test_agent_tools_trigger_visual_query() -> None:
     called_args, _ = mock_vlm.analyze_scene.call_args
     cropped_img_arg = called_args[0]
     
-    # x: 100, w: 50 -> padding_w = 15 -> x1 = 85, x2 = 165 ->幅 80
-    # y: 100, h: 60 -> padding_h = 18 -> y1 = 82, y2 = 178 ->高さ 96
-    assert cropped_img_arg.shape[0] == 96
-    assert cropped_img_arg.shape[1] == 80
+    # ソフトウェア・ズーム・リサイズにより 224x224 に拡大されていること
+    assert cropped_img_arg.shape[0] == 224
+    assert cropped_img_arg.shape[1] == 224
 
     # 存在しないターゲットID指定時のエラーハンドリング検証
     res_err = await tools.trigger_visual_query(99, "Query")

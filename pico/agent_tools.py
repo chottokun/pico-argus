@@ -77,8 +77,11 @@ class AgentTools:
         if cropped_img.size == 0:
             return "Error: Failed to crop the target region. Image size is zero."
 
+        # VLM 解析に最適な 224x224 にリサイズ（ソフトウェア・ズーム・アップスケーリング）
+        cropped_img = cv2.resize(cropped_img, (224, 224), interpolation=cv2.INTER_CUBIC)
+
         # VLMによるオンデマンド解析の実行
-        logger.info(f"👁️ [Visual Query] Sending cropped image of ID {track_id} to VLM (Ollama)...")
+        logger.info(f"👁️ [Visual Query] Sending cropped (224x224 resized) image of ID {track_id} to VLM (Ollama)...")
         analysis_result = await self.vlm.analyze_scene(cropped_img, prompt)
         
         if not analysis_result:

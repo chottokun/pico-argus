@@ -131,19 +131,23 @@ class SurveillanceAgent:
     async def node_agent_planner(self, state: AgentState) -> Dict[str, Any]:
         """意思決定ノード: 目標と現状に照らし合わせ、次のツール命令をプランニングする。"""
         prompt = (
-            f"あなたはTap0監視エージェントの司令塔（プランナー）です。\n"
+            f"あなたはTapo監視エージェントの司令塔（プランナー）です。\n"
             f"現在の状況と、これまでの記憶をもとに、次に取るべきアクションを選択してください。\n\n"
             f"--- [現在の視界メタデータ] ---\n{state['active_tracks_text']}\n\n"
             f"--- [想起された長期記憶Wiki] ---\n{chr(10).join(state['recalled_knowledge']) if state['recalled_knowledge'] else '記憶なし'}\n\n"
             f"--- [現在の目的 (Goal)] ---\n{state.get('agent_goal', '不審人物の検知および追従')}\n\n"
+            f"--- [自律警戒ルール] ---\n"
+            f"- 視界メタデータ内に '[⚠️WARNING ZONE DETECTED]' がついているターゲットは警戒域内にいます。\n"
+            f"- 警戒域内のターゲットの確信度が低い、または詳細が不明な場合は、まず 'trigger_visual_query' ツールで対象画像（ソフトウェアズーム）を詳しく解析（VLM指示）してください。\n"
+            f"- 解析結果を得た場合は、将来の監視に役立てるために 'store_memory' を使って Wiki にその結果（例: タイトル、詳細内容、タグ）を即座に保存・蓄積してください。\n\n"
             f"--- [使用可能なツールリスト] ---\n"
             f"1. set_tracking_target(track_id: int): 対象IDにカメラ視線を固定\n"
             f"2. clear_tracking_target(): カメラのターゲット固定を解除\n"
-            f"3. trigger_visual_query(track_id: int, prompt: str): 対象の画像をスポット解析\n"
-            f"4. store_memory(title: str, content: str, tags: str): Wikiに知識を追加\n\n"
-            f"次のJSONフォーマットのみで厳密に返答してください（他のテキストは一切出力しないでください）:\n"
+            f"3. trigger_visual_query(track_id: int, prompt: str): 対象の画像をスポットクロップ・アップスケーリング解析\n"
+            f"4. store_memory(title: str, content: str, tags: str): Wikiに新たな知識をOKF Markdown形式で追加\n\n"
+            f"次のJSONフォーマットのみで厳密に返答してください（他の説明テキストは一切出力しないでください）:\n"
             f'{{"action": "execute", "tool_name": "set_tracking_target", "args": {{"track_id": 1}}}}\n'
-            f'または、特に対処が必要ない場合は:\n'
+            f'または、特に対処が必要ない、あるいは完了した場合は:\n'
             f'{{"action": "end", "reason": "No actions needed"}}\n'
         )
 

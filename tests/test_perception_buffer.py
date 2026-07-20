@@ -29,6 +29,7 @@ def test_perception_buffer_update() -> None:
     assert t1["normalized_center"][0] == 0.094
     # cy = (10 + 100)/480 = 110/480 = 0.22916 => 0.229
     assert t1["normalized_center"][1] == 0.229
+    assert t1["warning_zone_triggered"] is False
     
     # オブジェクト2のメタデータ確認
     t2 = json_data[1]
@@ -36,12 +37,14 @@ def test_perception_buffer_update() -> None:
     assert t2["class_name"] == "cat"
     assert t2["confidence"] == 0.85
     assert t2["position_label"] == "bottom-right"
+    assert t2["warning_zone_triggered"] is True
     
     # テキスト出力の確認
     text_data = buffer.get_active_tracks_text()
     assert "Active tracks detected in the scene:" in text_data
     assert "ID: 1 | Class: person" in text_data
     assert "ID: 2 | Class: cat" in text_data
+    assert "WARNING ZONE DETECTED" in text_data
     assert "Position: top-left" in text_data
     assert "Position: bottom-right" in text_data
 

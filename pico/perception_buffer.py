@@ -24,8 +24,10 @@ class PerceptionBuffer:
     V2 設計 §1 の「常時稼働テキスト知覚バッファ」の実体。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, warning_zone_x: Tuple[float, float] = (0.1, 0.9), warning_zone_y: Tuple[float, float] = (0.4, 0.9)) -> None:
         self.active_tracks: List[Dict[str, Any]] = []
+        self.warning_zone_x = warning_zone_x
+        self.warning_zone_y = warning_zone_y
 
     def update(self, tracked_objects: List[Any], frame_shape: Tuple[int, int, int]) -> None:
         """トラッカーのアクティブトラック一覧を受け取り、内部のメタデータを更新する。
@@ -60,6 +62,12 @@ class PerceptionBuffer:
             v_pos = "top" if cy < 0.33 else ("bottom" if cy > 0.66 else "middle")
             position_label = f"{v_pos}-{h_pos}"
 
+            # 警戒ゾーン判定
+            is_in_warning = (
+                self.warning_zone_x[0] <= cx <= self.warning_zone_x[1] and
+                self.warning_zone_y[0] <= cy <= self.warning_zone_y[1]
+            )
+
             new_tracks.append({
                 "track_id": obj.track_id,
                 "class_id": obj.class_id,
@@ -68,7 +76,8 @@ class PerceptionBuffer:
                 "bbox": [int(x), int(y), int(w), int(h)],
                 "normalized_center": [round(cx, 3), round(cy, 3)],
                 "normalized_area": round(area, 4),
-                "position_label": position_label
+                "position_label": position_label,
+                "warning_zone_triggered": is_in_warning
             })
 
         self.active_tracks = new_tracks
@@ -85,10 +94,11 @@ class PerceptionBuffer:
 
         lines = ["Active tracks detected in the scene:"]
         for t in self.active_tracks:
+            warning_tag = " [⚠️WARNING ZONE DETECTED]" if t["warning_zone_triggered"] else ""
             desc = (
                 f"- ID: {t['track_id']} | "
                 f"Class: {t['class_name']} (conf: {t['confidence']:.2f}) | "
-                f"Position: {t['position_label']} (cx: {t['normalized_center'][0]}, cy: {t['normalized_center'][1]}) | "
+                f"Position: {t['position_label']} (cx: {t['normalized_center'][0]}, cy: {t['normalized_center'][1]}){warning_tag} | "
                 f"Area: {t['normalized_area']:.4%}"
             )
             lines.append(desc)
