@@ -100,8 +100,14 @@ class AdaptivePIDController:
 
     def reset(self) -> None:
         """ターゲットをロストした際などに、積分値および過去の誤差履歴を初期化する。"""
+        # すでにリセット済みならログを出さずに早期リターン
+        if (self.prev_error_x == 0.0 and self.prev_error_y == 0.0 and 
+                self.integral_x == 0.0 and self.integral_y == 0.0):
+            return
+
         self.prev_error_x = 0.0
         self.prev_error_y = 0.0
         self.integral_x = 0.0
         self.integral_y = 0.0
         logger.info("AdaptivePIDController state was reset.")
+
