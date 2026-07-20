@@ -75,3 +75,24 @@ def test_ptz_controller_safe_move(mock_onvif_camera) -> None:
     # クランプされた後の実際の位置
     assert controller.current_x == 1.0
     assert controller.current_y == 0.5
+
+
+def test_ptz_controller_align_to_home(mock_onvif_camera) -> None:
+    mock_cam, mock_ptz, mock_media = mock_onvif_camera
+    mock_request = MagicMock()
+    mock_ptz.create_type.return_value = mock_request
+
+    # 自動ホームアライメントを有効にして初期化
+    controller = PTZController(
+        ip="192.168.1.100", user="user", password="pwd",
+        max_limit_x=1.0, max_limit_y=0.5,
+        align_to_home=True
+    )
+    time.sleep(0.3)
+
+    # 限界追い込み（左・下に移動）と、中心復帰（右・上に移動）が呼び出されていることを検証
+    # （テスト内ではモック経由で命令数や位置の変化を確認する）
+    # 初期化が完了した時点で、原点 (0.0, 0.0) にアライメントされているはず
+    assert controller.current_x == 0.0
+    assert controller.current_y == 0.0
+

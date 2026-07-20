@@ -20,7 +20,8 @@ try:
         user=config.tapo_user,
         password=config.tapo_pass,
         max_limit_x=config.max_limit_x,
-        max_limit_y=config.max_limit_y
+        max_limit_y=config.max_limit_y,
+        align_to_home=True
     )
     print("✅ ONVIF初期化成功。自動追尾の準備が整いました。")
 except Exception as e:

@@ -12,7 +12,8 @@ class PTZController:
 
     def __init__(
         self, ip: str, user: str, password: str, port: int = 2020,
-        max_limit_x: float = 1.0, max_limit_y: float = 0.5
+        max_limit_x: float = 1.0, max_limit_y: float = 0.5,
+        align_to_home: bool = False
     ) -> None:
         self.ip: str = ip
         self.user: str = user
@@ -44,12 +45,52 @@ class PTZController:
             logger.error(f"Failed to initialize ONVIF connection to {self.ip}:{self.port} - {e}")
             raise
 
+        # 起動時に真の中心（原点）に強制復帰するアライメント処理
+        if align_to_home:
+            self._align_to_home_position()
+
         # スレッド安全なコマンド送信用キュー (最大サイズ1で最新の命令のみ保持)
         self.move_queue: queue.Queue = queue.Queue(maxsize=1)
         self.running: bool = True
         
         self.worker_thread: threading.Thread = threading.Thread(target=self._ptz_worker, daemon=True)
         self.worker_thread.start()
+
+    def _align_to_home_position(self) -> None:
+        """カメラを最も左下（物理限界）まで駆動させ、そこから設定リミット値分戻して真の中心(0.0, 0.0)に位置合わせする。"""
+        logger.info("Starting startup Home Alignment to secure origin...")
+        try:
+            # 1. 最も左・下へ強制追い込み (安全のため十分な幅を複数ステップに分けて送信)
+            # キャリブレーションが X: 1.08, Y: 0.85 なので、1.5以上動かせば確実に端に突き当たる
+            # 一括で大きな値を送るより、安定のために 2ステップに分ける
+            for _ in range(2):
+                request = self.ptz.create_type('RelativeMove')
+                request.ProfileToken = self.profile_token
+                # Xは左がマイナス、Yは下がマイナス
+                request.Translation = {'PanTilt': {'x': -1.2, 'y': -1.2}}
+                self.ptz.RelativeMove(request)
+                time.sleep(1.2)  # カメラが動き切るまで待つ
+
+            # 2. 端に突き当たった状態から、キャリブレーションで定義された限界幅分だけ逆方向（右・上）に動かす
+            # これにより「真の中心（原点）」に正確にアライメントされる
+            request = self.ptz.create_type('RelativeMove')
+            request.ProfileToken = self.profile_token
+            # 端から中心までの距離 ≒ リミット値をマージンでデスケールした物理ステップ
+            # （キャリブ限界はマージン85%なので、0.85で割って戻すことで真の物理中心へ補正）
+            target_x = self.max_limit_x / 0.85
+            target_y = self.max_limit_y / 0.85
+            
+            request.Translation = {'PanTilt': {'x': target_x, 'y': target_y}}
+            self.ptz.RelativeMove(request)
+            time.sleep(1.5)
+
+            # 現在の推測位置を 0.0 にリセット
+            self.current_x = 0.0
+            self.current_y = 0.0
+            logger.info(f"Home Alignment completed. Position calibrated to origin (0.0, 0.0). Target values were X: {target_x:.2f}, Y: {target_y:.2f}")
+        except Exception as e:
+            logger.error(f"Failed to perform Home Alignment: {e}")
+
 
     def _ptz_worker(self) -> None:
         """キューから移動コマンドを受け取り、カメラを駆動するバックグラウンドスレッド。"""
