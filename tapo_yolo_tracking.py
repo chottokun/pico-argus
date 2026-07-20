@@ -90,7 +90,7 @@ if not os.path.exists(onnx_path):
     urllib.request.urlretrieve(url, onnx_path)
 
 detector = YoloDetector(model_path=onnx_path, conf_threshold=CONF_THRESHOLD)
-tracker = SimpleIoUTracker(iou_threshold=0.3, max_lost_frames=3)
+tracker = SimpleIoUTracker(iou_threshold=0.3, max_lost_frames=15)
 guard = GuardRails(timeout_limit=3.0, max_area_ratio=0.75)
 
 TRACK_INTERVAL = 0.45
