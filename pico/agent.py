@@ -113,8 +113,10 @@ class SurveillanceAgent:
 
     async def node_evaluate_situation(self, state: AgentState) -> Dict[str, Any]:
         """内省思考ノード: 知覚バッファとWiki長期記憶を想起して統合する。"""
+        active_tracks = state.get("active_tracks", [])
+        
         # 画面内に人物がいる場合、関連するWiki知識を自動想起
-        people_tracks = [t for t in state["active_tracks"] if t["class_name"] == "person"]
+        people_tracks = [t for t in active_tracks if t["class_name"] == "person"]
         recalled = []
         if people_tracks:
             # 簡易キーワードで検索
@@ -123,8 +125,24 @@ class SurveillanceAgent:
             if "Memory" in memories_text:
                 recalled.append(memories_text)
 
+        # 渡されたスナップショットに基づき、その時点での可読テキストを組み立てる
+        if not active_tracks:
+            active_tracks_text = "No active tracks detected in the current frame."
+        else:
+            lines = ["Active tracks detected in the scene:"]
+            for t in active_tracks:
+                warning_tag = " [⚠️WARNING ZONE DETECTED]" if t.get("warning_zone_triggered") else ""
+                desc = (
+                    f"- ID: {t['track_id']} | "
+                    f"Class: {t['class_name']} (conf: {t['confidence']:.2f}) | "
+                    f"Position: {t['position_label']} (cx: {t['normalized_center'][0]}, cy: {t['normalized_center'][1]}){warning_tag} | "
+                    f"Area: {t['normalized_area']:.4%}"
+                )
+                lines.append(desc)
+            active_tracks_text = "\n".join(lines)
+
         return {
-            "active_tracks_text": self.perception.get_active_tracks_text(),
+            "active_tracks_text": active_tracks_text,
             "recalled_knowledge": recalled
         }
 

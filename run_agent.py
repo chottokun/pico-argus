@@ -98,6 +98,13 @@ perception_buffer = PerceptionBuffer()
 
 # 長期記憶・VLMクライアント
 memory_store = MemoryStore(db_path="wiki.db")
+memory_store.add_entry(
+    filepath="rules/general.md",
+    doc_type="rule",
+    title="エッジ状況分析基本指示",
+    tags="status person action",
+    content="人(person)やオブジェクトを検知した場合、その状態や行動・状況を客観的に観察し分析すること。gemma4:e2bは最優先で使用すること。"
+)
 vlm_client = OllamaVisionClient(base_url=config.ollama_base_url, model=config.ollama_model)
 
 # 司令塔エージェントの準備
