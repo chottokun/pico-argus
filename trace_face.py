@@ -120,7 +120,6 @@ try:
 
                 # ONVIFは右・上がプラス、画面は右・下がプラスのためY軸の入力を反転
                 dx, dy = pid.calculate_step(norm_cx, 1.0 - norm_cy, dt)
-                dx = -dx
 
                 if dx != 0.0 or dy != 0.0:
                     actual_x, actual_y = ptz.safe_move(dx, dy)

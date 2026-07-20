@@ -244,8 +244,6 @@ try:
                 
                 # PID計算
                 dx, dy = pid.calculate_step(norm_cx, 1.0 - norm_cy, dt)
-                # 左右逆転補正（画面左にある場合カメラを左へ振るために符号反転）
-                dx = -dx
                 
                 logging.info(
                     f"🎯 [PID debug] Target: cx={norm_cx:.2f}, cy={norm_cy:.2f} | "
