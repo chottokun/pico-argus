@@ -92,7 +92,7 @@ if not os.path.exists(onnx_path):
     urllib.request.urlretrieve(url, onnx_path)
 
 detector = YoloDetector(model_path=onnx_path, conf_threshold=CONF_THRESHOLD)
-tracker = SimpleIoUTracker(iou_threshold=0.3, max_lost_frames=15)
+tracker = SimpleIoUTracker(iou_threshold=0.3, max_lost_frames=30)
 guard = GuardRails(timeout_limit=3.0, max_area_ratio=0.75)
 perception_buffer = PerceptionBuffer()
 
@@ -194,9 +194,13 @@ try:
             
             detected_objects_summary.append(f"{class_name}#{track_id}({conf:.2f})")
 
-            if cid == TRACK_TARGET_ID and conf >= TARGET_CONF_THRESHOLD:
+            # 🎯 ロックオン対象IDは最低保証しきい値 CONF_THRESHOLD (0.45) で維持、それ以外は TARGET_CONF_THRESHOLD (0.60)
+            is_locked = (ptz.lock_on_id == track_id)
+            required_conf = CONF_THRESHOLD if is_locked else TARGET_CONF_THRESHOLD
+
+            if cid == TRACK_TARGET_ID and conf >= required_conf:
                 track_candidates.append(obj)
-                if ptz.lock_on_id == track_id:
+                if is_locked:
                     color = (255, 0, 255)  # ロックターゲットはピンク
                     label = f"{class_name}#{track_id}: {conf:.2f} [LOCKED]"
                 else:
