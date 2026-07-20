@@ -93,6 +93,7 @@ guard = GuardRails(timeout_limit=3.0, max_area_ratio=0.75)
 
 TRACK_INTERVAL = 0.45
 last_move_time = 0.0
+last_cognition_trigger_time = 0.0
 
 # --- 🧠 2. 認知ループ（Ollama + SQLite 長期記憶）のバックグラウンド起動 ---
 memory_store = MemoryStore(db_path="wiki.db")
@@ -105,7 +106,9 @@ memory_store.add_entry(
 )
 
 vlm_client = OllamaVisionClient(base_url=config.ollama_base_url, model=config.ollama_model)
-cognition_engine = CognitionEngine(vlm_client=vlm_client, memory_store=memory_store)
+# ptz_controller を渡して相互参照を有効化
+cognition_engine = CognitionEngine(vlm_client=vlm_client, memory_store=memory_store, ptz_controller=ptz)
+ptz.target_rule = config.cognition_target_rule
 
 cognition_loop = asyncio.new_event_loop()
 
@@ -134,6 +137,7 @@ width, height = int(test_frame.shape[1]), int(test_frame.shape[0])
 center_x, center_y = width // 2, height // 2
 
 logging.info("🚀 反射・認知・安全ガードレール統合追尾システム稼働！")
+logging.info(f"🎯 探索ターゲットルール: '{ptz.target_rule}'")
 
 try:
     while True:
@@ -183,13 +187,18 @@ try:
             (0, 255, 255), 1
         )
         
-        # 夜間検知時の表示
+        # 情報表示
+        info_y = 30
         if is_night:
-            cv2.putText(frame, "NIGHT MODE ACTIVE (DeadZone: 5%)", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            cv2.putText(frame, "NIGHT MODE ACTIVE (DeadZone: 5%)", (10, info_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            info_y += 25
+        if ptz.lock_on_id is not None:
+            cv2.putText(frame, f"TARGET LOCKED: ID {ptz.lock_on_id}", (10, info_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
 
         track_candidates = []
         detected_objects_summary = []
 
+        # トラッキング中のオブジェクトを描画・分類
         for obj in tracked_objects:
             x, y, w, h = obj.bbox
             cid = obj.class_id
@@ -199,38 +208,74 @@ try:
             
             detected_objects_summary.append(f"{class_name}#{track_id}({conf:.2f})")
 
+            # 描画カラーとラベルの決定
             if cid == TRACK_TARGET_ID and conf >= TARGET_CONF_THRESHOLD:
-                color = (0, 255, 0)
                 track_candidates.append(obj)
-                
-                # 🧠 認知イベントの非同期トリガー
-                if track_id not in submitted_track_ids:
-                    submitted_track_ids.add(track_id)
-                    
-                    analysis_frame = frame.copy()
-                    event = {
-                        "class_name": class_name,
-                        "track_id": track_id,
-                        "frame": analysis_frame
-                    }
-                    cognition_engine.trigger_event_from_thread(event, cognition_loop)
-                    logging.info(f"🧠 [Event Triggered] Sent {class_name}#{track_id} to Cognition Loop.")
+                if ptz.lock_on_id == track_id:
+                    color = (255, 0, 255)  # ロックオン中はピンク
+                    label = f"{class_name}#{track_id}: {conf:.2f} [LOCKED]"
+                else:
+                    color = (0, 255, 0)
+                    label = f"{class_name}#{track_id}: {conf:.2f}"
             else:
                 color = (0, 165, 255)
+                label = f"{class_name}#{track_id}: {conf:.2f}"
                 
             cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-            cv2.putText(frame, f"{class_name}#{track_id}: {conf:.2f}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-        # 優先ターゲットの選定
+        # 🧠 認知イベントの非同期トリガー制御
+        current_time = time.monotonic()
+        has_new_id = False
+        for obj in track_candidates:
+            if obj.track_id not in submitted_track_ids:
+                submitted_track_ids.add(obj.track_id)
+                has_new_id = True
+
+        # 新規ターゲット検知または定期的なタイミング（例: 8秒に1回）でシーン全体の情報を送信
+        if len(track_candidates) > 0 and (has_new_id or (current_time - last_cognition_trigger_time > 8.0)):
+            analysis_frame = frame.copy()
+            # アノテーションを含んだ情報をまとめる
+            event = {
+                "frame": analysis_frame,
+                "detections": [
+                    {
+                        "track_id": obj.track_id,
+                        "bbox": [obj.bbox[0], obj.bbox[1], obj.bbox[0] + obj.bbox[2], obj.bbox[1] + obj.bbox[3]],
+                        "class_name": COCO_CLASSES[obj.class_id] if obj.class_id < len(COCO_CLASSES) else "person"
+                    }
+                    for obj in track_candidates
+                ]
+            }
+            cognition_engine.trigger_event_from_thread(event, cognition_loop)
+            last_cognition_trigger_time = current_time
+            logging.info(f"🧠 [Cognition Triggered] Sent {len(track_candidates)} targets to Cognition Loop.")
+
+        # 優先ターゲットの選定（ロックオン優先）
         main_track_obj = None
         if len(track_candidates) > 0:
-            main_track_obj = max(track_candidates, key=lambda o: o.bbox[2] * o.bbox[3])
-            mx, my, mw, mh = main_track_obj.bbox
-            person_cx, person_cy = mx + mw // 2, my + mh // 2
-            cv2.circle(frame, (person_cx, person_cy), 6, (0, 0, 255), -1)
+            if ptz.lock_on_id is not None:
+                # ロックオンIDが画面内にあるか探索
+                lock_on_obj = next((o for o in track_candidates if o.track_id == ptz.lock_on_id), None)
+                if lock_on_obj is not None:
+                    main_track_obj = lock_on_obj
+                    # ロックオン中のオブジェクトを青い円でマーク
+                    mx, my, mw, mh = main_track_obj.bbox
+                    person_cx, person_cy = mx + mw // 2, my + mh // 2
+                    cv2.circle(frame, (person_cx, person_cy), 8, (255, 0, 255), -1)
+                else:
+                    # ロックオンされていた対象が画面外に消えた場合
+                    logging.info(f"🎯 [LOCK-ON LOST] Target ID {ptz.lock_on_id} lost. Reverting to default.")
+                    ptz.lock_on_id = None
+
+            # ロックオンがない、またはロストした場合は、最大面積のターゲットを追尾
+            if main_track_obj is None:
+                main_track_obj = max(track_candidates, key=lambda o: o.bbox[2] * o.bbox[3])
+                mx, my, mw, mh = main_track_obj.bbox
+                person_cx, person_cy = mx + mw // 2, my + mh // 2
+                cv2.circle(frame, (person_cx, person_cy), 6, (0, 0, 255), -1)
 
         # --- ⏱️ モーター制御（反射ループ） ---
-        current_time = time.monotonic()
         dt = current_time - last_move_time
 
         if dt > TRACK_INTERVAL:
@@ -275,7 +320,6 @@ finally:
     except Exception as e:
         logging.warning(f"Failed to close VLM client safely: {e}")
     memory_store.close()
-
     
     video_reader.release()
     cv2.destroyAllWindows()

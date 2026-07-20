@@ -31,6 +31,10 @@ class PTZController:
         self.current_x: float = 0.0
         self.current_y: float = 0.0
 
+        # 能動的認知制御用: VLMに指示されたロックオン対象IDと追尾ルール
+        self.lock_on_id: Optional[int] = None
+        self.target_rule: str = "a person wearing a hat"
+
         # ONVIF 接続の初期化
         try:
             self.mycam: ONVIFCamera = ONVIFCamera(self.ip, self.port, self.user, self.password)

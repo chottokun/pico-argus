@@ -37,6 +37,7 @@ class AppConfig:
         # Ollama 設定（デフォルト値と .env による上書き）
         self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+        self.cognition_target_rule: str = os.getenv("TAPO_COGNITION_TARGET_RULE", "a person wearing a hat")
 
         # 起動時アライメント設定 (デフォルト True、"false", "no", "0" で無効化)
         align_env = os.getenv("TAPO_ALIGN_TO_HOME", "true").lower()
