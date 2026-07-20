@@ -59,7 +59,7 @@ class OllamaVisionClient:
 
         try:
             url = f"{self.base_url}/api/chat"
-            response = await self.client.post(url, json=payload)
+            response = await self.client.post(url, json=payload, timeout=120.0)
             if response.status_code == 200:
                 result = response.json()
                 content = result.get("message", {}).get("content")

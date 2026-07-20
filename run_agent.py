@@ -222,8 +222,13 @@ try:
 
         # 🧠 司令塔エージェントへのプラン実行要求（非同期トリガー）
         current_time = time.monotonic()
-        # 10秒に1回、エージェントをバックグラウンドで起動して自律プランを検討させる
-        if len(track_candidates) > 0 and (current_time - last_agent_trigger_time > 10.0):
+        # 10秒に1回、かつエージェントが現在思考中でない場合のみ、バックグラウンドで起動して自律プランを検討させる
+        global agent_is_thinking
+        if 'agent_is_thinking' not in globals():
+            agent_is_thinking = False
+
+        if len(track_candidates) > 0 and (current_time - last_agent_trigger_time > 10.0) and not agent_is_thinking:
+            agent_is_thinking = True
             last_agent_trigger_time = current_time
             # 知覚バッファ情報を引き抜く
             active_tracks_snapshot = perception_buffer.get_active_tracks_json()
@@ -236,6 +241,8 @@ try:
             )
             
             def agent_done_callback(fut):
+                global agent_is_thinking
+                agent_is_thinking = False
                 try:
                     res = fut.result()
                     logging.info(f"🧠 [Agent Finished] Planning Step Result: {res}")
