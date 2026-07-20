@@ -1,6 +1,5 @@
 import os
 import cv2
-import numpy as np
 import time
 import urllib.request
 import logging
@@ -10,6 +9,8 @@ from pico.config import AppConfig, build_rtsp_url
 from pico.video_reader import RTSPVideoReader
 from pico.onvif_client import PTZController
 from pico.pid_controller import AdaptivePIDController
+from pico.detector import YoloDetector
+from pico.tracker import SimpleIoUTracker
 
 # --- 📁 0. ログシステムの設定 ---
 log_format = "%(asctime)s [%(levelname)s] %(message)s"
@@ -50,23 +51,34 @@ except Exception as e:
     logging.error(f"ONVIF初期化エラー: {e}")
     raise SystemExit(1)
 
-# --- 🎯 1. 制御用パラメータ & PID制御器初期化 ---
-TRACK_TARGET_ID = 0          
-CONF_THRESHOLD = 0.45        
-TARGET_CONF_THRESHOLD = 0.60 
+# --- 🎯 1. 制御用パラメータ & PID制御器/検出器/トラッカーの初期化 ---
+TRACK_TARGET_ID = 0  # COCOでの 'person' ID は 0
+CONF_THRESHOLD = 0.45
+TARGET_CONF_THRESHOLD = 0.60
 
-# 適応型PIDコントローラーの定義
+# 適応型PIDコントローラー
 pid = AdaptivePIDController(
-    kp_base=0.35,      # 基本比例感度 (0.18 から段階的に適応)
-    ki=0.03,           # 積分ゲイン
-    kd=0.005,          # 微分ゲイン
-    dead_zone=0.10,    # 10%の不感帯
-    min_speed=0.03,    # 静止摩擦突破の最小移動量
-    max_step=0.12,     # 最大リミッター
-    integral_limit=0.2 # 積分リミッター
+    kp_base=0.35,
+    ki=0.03,
+    kd=0.005,
+    dead_zone=0.10,
+    min_speed=0.03,
+    max_step=0.12,
+    integral_limit=0.2
 )
 
-TRACK_INTERVAL = 0.45  # 命令送信最小間隔（秒）
+# 🚶 YOLOv8-small ONNXモデルの準備
+onnx_path = "yolov8s.onnx"
+if not os.path.exists(onnx_path):
+    logging.info("⏳ 高精度版 YOLOv8-small ONNXモデルをダウンロード中...")
+    url = "https://huggingface.co/Kalray/yolov8/resolve/main/yolov8s.onnx"
+    urllib.request.urlretrieve(url, onnx_path)
+
+# 検出器とトラッカーの初期化
+detector = YoloDetector(model_path=onnx_path, conf_threshold=CONF_THRESHOLD)
+tracker = SimpleIoUTracker(iou_threshold=0.3, max_lost_frames=3)
+
+TRACK_INTERVAL = 0.45
 last_move_time = 0.0
 
 # --- 📹 2. RTSP映像ストリームの開始 ---
@@ -84,19 +96,7 @@ if not ret or test_frame is None:
 width, height = int(test_frame.shape[1]), int(test_frame.shape[0])
 center_x, center_y = width // 2, height // 2
 
-# --- 🚶 3. YOLOv8-small ONNXモデルの準備 ---
-onnx_path = "yolov8s.onnx"
-if not os.path.exists(onnx_path):
-    logging.info("⏳ 高精度版 YOLOv8-small ONNXモデルをダウンロード中...")
-    url = "https://huggingface.co/Kalray/yolov8/resolve/main/yolov8s.onnx"
-    urllib.request.urlretrieve(url, onnx_path)
-
-net = cv2.dnn.readNetFromONNX(onnx_path)
-net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-
-x_factor, y_factor = width / 640, height / 640
-
-logging.info("🚀 適応型PID追尾システム稼働！")
+logging.info("🚀 ONNX Runtime 移行 & IDトラッキング追尾システム稼働！")
 
 try:
     while True:
@@ -105,30 +105,13 @@ try:
             time.sleep(0.01)
             continue
 
-        blob = cv2.dnn.blobFromImage(frame, 1/255.0, (640, 640), swapRB=True, crop=False)
-        net.setInput(blob)
-        outputs = net.forward()
-
-        data = outputs[0].T
-        class_scores = data[:, 4:]
-        class_ids = np.argmax(class_scores, axis=1)
-        confidences_all = np.max(class_scores, axis=1)
+        # 検出の実行 (ONNX Runtime 経由)
+        detections = detector.detect(frame)
         
-        valid_indices = np.where(confidences_all > CONF_THRESHOLD)[0]
-        boxes, confidences, box_class_ids = [], [], []
+        # 追跡状態の更新
+        tracked_objects = tracker.update(detections)
 
-        for i in valid_indices:
-            row = data[i]
-            cx, cy, w, h = row[0:4]
-            boxes.append([int((cx - w / 2) * x_factor), int((cy - h / 2) * y_factor), int(w * x_factor), int(h * y_factor)])
-            confidences.append(float(confidences_all[i]))
-            box_class_ids.append(int(class_ids[i]))
-
-        indices = cv2.dnn.NMSBoxes(boxes, confidences, CONF_THRESHOLD, 0.4)
-        if len(indices) > 0:
-            indices = np.array(indices).flatten()
-
-        # ガイドライン描画（PIDの不感帯枠を画面に可視化）
+        # ガイドライン描画
         cv2.line(frame, (center_x, 0), (center_x, height), (255, 0, 0), 1)
         cv2.line(frame, (0, center_y), (width, center_y), (255, 0, 0), 1)
         cv2.rectangle(
@@ -141,27 +124,30 @@ try:
         track_candidates = []
         detected_objects_summary = []
 
-        for idx in indices:
-            x, y, w, h = boxes[idx]
-            cid = box_class_ids[idx]
-            conf = confidences[idx]
+        for obj in tracked_objects:
+            x, y, w, h = obj.bbox
+            cid = obj.class_id
+            conf = obj.confidence
+            track_id = obj.track_id
             class_name = COCO_CLASSES[cid] if cid < len(COCO_CLASSES) else f"ID {cid}"
             
-            detected_objects_summary.append(f"{class_name}({conf:.2f})")
+            detected_objects_summary.append(f"{class_name}#{track_id}({conf:.2f})")
 
+            # ターゲットの条件判定
             if cid == TRACK_TARGET_ID and conf >= TARGET_CONF_THRESHOLD:
-                color = (0, 255, 0)      
-                track_candidates.append(idx)
+                color = (0, 255, 0)  # 追尾ターゲットは緑枠
+                track_candidates.append(obj)
             else:
-                color = (0, 165, 255)    
+                color = (0, 165, 255)  # その他はオレンジ枠
                 
             cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-            cv2.putText(frame, f"{class_name}: {conf:.2f}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            cv2.putText(frame, f"{class_name}#{track_id}: {conf:.2f}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-        main_track_idx = None
+        # 追尾対象の選択（最も面積が大きい人を選択）
+        main_track_obj = None
         if len(track_candidates) > 0:
-            main_track_idx = max(track_candidates, key=lambda i: boxes[i][2] * boxes[i][3])
-            mx, my, mw, mh = boxes[main_track_idx]
+            main_track_obj = max(track_candidates, key=lambda o: o.bbox[2] * o.bbox[3])
+            mx, my, mw, mh = main_track_obj.bbox
             person_cx, person_cy = mx + mw // 2, my + mh // 2
             cv2.circle(frame, (person_cx, person_cy), 6, (0, 0, 255), -1)
 
@@ -171,25 +157,23 @@ try:
 
         if dt > TRACK_INTERVAL:
             if detected_objects_summary:
-                logging.info(f"👁️ 画面内の検知状況: {', '.join(detected_objects_summary)}")
+                logging.info(f"👁️ 画面内の追跡状況: {', '.join(detected_objects_summary)}")
                 
-            if main_track_idx is not None:
-                mx, my, mw, mh = boxes[main_track_idx]
+            if main_track_obj is not None:
+                mx, my, mw, mh = main_track_obj.bbox
                 person_cx, person_cy = mx + mw // 2, my + mh // 2
                 
-                # 正規化された座標(0.0〜1.0)に変換
+                # 正規化された座標に変換
                 norm_cx = person_cx / width
                 norm_cy = person_cy / height
                 
-                # PID計算により移動ステップ(dx, dy)を算出
-                # ONVIFは右・上がプラス、画面は右・下がプラスのためY軸の入力を反転
+                # PID計算
                 dx, dy = pid.calculate_step(norm_cx, 1.0 - norm_cy, dt)
                 
-                # 移動の実行
                 if dx != 0.0 or dy != 0.0:
                     ptz.safe_move(dx, dy)
             else:
-                # ターゲットロスト時は積分値をリセットして暴走を防止
+                # ターゲットロスト時は PID リセット
                 pid.reset()
             
             last_move_time = current_time
