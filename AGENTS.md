@@ -31,3 +31,14 @@
 ## ✅ Definition of Done
 
 Task is complete only when all Security Checks and Tests pass, dependencies are clean, and documentation/Git history matches this guide.
+
+## 情報源
+
+実装時は次の順で参照する。
+
+1. リポジトリ内のコード
+2. docs/
+3. README.md
+4. 公式ドキュメント
+
+docs/, README.mdは必要な場合には更新し最新の情報とすること
