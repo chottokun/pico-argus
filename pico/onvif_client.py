@@ -82,28 +82,15 @@ class PTZController:
                         if ret and frame_data is not None:
                             before_frame = cv2.cvtColor(frame_data.copy(), cv2.COLOR_BGR2GRAY)
 
+                    # 移動コマンド送信
                     request = self.ptz.create_type('RelativeMove')
                     request.ProfileToken = self.profile_token
                     request.Translation = {'PanTilt': {'x': dx, 'y': dy}}
                     self.ptz.RelativeMove(request)
 
-                    # 待機しながらプレビュー更新
-                    if video_reader is not None:
-                        start_w = time.monotonic()
-                        frame_drawn = False
-                        while time.monotonic() - start_w < wait_time:
-                            ret, frame_current = video_reader.read()
-                            if ret and frame_current is not None:
-                                disp = frame_current.copy()
-                                cv2.putText(disp, f"ALIGN: {phase_name} ({attempt+1})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                                cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
-                                cv2.waitKey(1)
-                                frame_drawn = True
-                            time.sleep(0.05)
-                        if not frame_drawn:
-                            time.sleep(wait_time)
-                    else:
-                        time.sleep(0.18)
+                    # 動的測定時は1.4秒の絶対静止待機 (RTSPバッファと物理移動を安定化)
+                    wait_time_actual = wait_time if video_reader is not None else 0.18
+                    time.sleep(wait_time_actual)
 
                     steps += 1
 
@@ -118,6 +105,12 @@ class PTZController:
                             
                             logger.info(f"Alignment [{phase_name}]: Step {steps} | Motion: {moved_ratio:.2f}%")
                             
+                            # モニター表示
+                            disp = frame_after.copy()
+                            cv2.putText(disp, f"ALIGN: {phase_name} ({steps}) | Motion: {moved_ratio:.1f}%", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                            cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
+                            cv2.waitKey(1)
+
                             # 最初の4ステップ以降で動きが3%未満なら停止と判定
                             if moved_ratio < 3.0 and attempt >= 4:
                                 logger.info(f"🛑 [{phase_name}] Limit detected at step {steps}.")
@@ -171,22 +164,15 @@ class PTZController:
                 request.Translation = {'PanTilt': {'x': -step_size_x, 'y': 0.0}}
                 self.ptz.RelativeMove(request)
                 
+                time.sleep(wait_time if video_reader is not None else 0.18)
+                
                 if video_reader is not None:
-                    start_w = time.monotonic()
-                    frame_drawn = False
-                    while time.monotonic() - start_w < 1.0:
-                        ret, frame_current = video_reader.read()
-                        if ret and frame_current is not None:
-                            disp = frame_current.copy()
-                            cv2.putText(disp, f"ALIGN: Returning Center X ({i+1}/{center_steps_x})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                            cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
-                            cv2.waitKey(1)
-                            frame_drawn = True
-                        time.sleep(0.05)
-                    if not frame_drawn:
-                        time.sleep(1.0)
-                else:
-                    time.sleep(0.18)
+                    ret, frame_current = video_reader.read()
+                    if ret and frame_current is not None:
+                        disp = frame_current.copy()
+                        cv2.putText(disp, f"ALIGN: Returning Center X ({i+1}/{center_steps_x})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                        cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
+                        cv2.waitKey(1)
 
             for i in range(center_steps_y):
                 request = self.ptz.create_type('RelativeMove')
@@ -194,22 +180,15 @@ class PTZController:
                 request.Translation = {'PanTilt': {'x': 0.0, 'y': -step_size_y}}
                 self.ptz.RelativeMove(request)
                 
+                time.sleep(wait_time if video_reader is not None else 0.18)
+                
                 if video_reader is not None:
-                    start_w = time.monotonic()
-                    frame_drawn = False
-                    while time.monotonic() - start_w < 1.0:
-                        ret, frame_current = video_reader.read()
-                        if ret and frame_current is not None:
-                            disp = frame_current.copy()
-                            cv2.putText(disp, f"ALIGN: Returning Center Y ({i+1}/{center_steps_y})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                            cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
-                            cv2.waitKey(1)
-                            frame_drawn = True
-                        time.sleep(0.05)
-                    if not frame_drawn:
-                        time.sleep(1.0)
-                else:
-                    time.sleep(0.18)
+                    ret, frame_current = video_reader.read()
+                    if ret and frame_current is not None:
+                        disp = frame_current.copy()
+                        cv2.putText(disp, f"ALIGN: Returning Center Y ({i+1}/{center_steps_y})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                        cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
+                        cv2.waitKey(1)
 
             time.sleep(1.0)
             self.current_x = 0.0
