@@ -13,7 +13,7 @@ class OllamaVisionClient:
     def __init__(self, base_url: str = "http://localhost:11434", model: str = "gemma4:e2b") -> None:
         self.base_url: str = base_url
         self.model: str = model
-        self.client: httpx.AsyncClient = httpx.AsyncClient(timeout=45.0)
+        self.client: httpx.AsyncClient = httpx.AsyncClient(timeout=120.0)
 
     async def health_check(self) -> bool:
         """Ollama サーバーが起動し、応答するかヘルスチェックを実行する。"""
