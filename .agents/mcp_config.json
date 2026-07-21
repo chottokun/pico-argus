@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "cognitive-surveillance": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "pico.mcp.server"
+      ],
+      "cwd": "e:\\Python Scripts\\Pico"
+    }
+  }
+}
