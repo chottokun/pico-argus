@@ -14,8 +14,9 @@
 - カメラの可動域キャリブレーション
 - 顔検出による自動追尾
 - YOLOv8 で人物を検出して追尾
+- (新) 筋肉・記憶・感覚の自律型CLIおよびMCPサーバー
 
-## 主要スクリプト
+## 主要スクリプト・CLI
 
 - main.py
   - RTSP ストリームを表示する最小構成のサンプルです。
@@ -27,6 +28,12 @@
   - YOLOv8 ONNX モデルを使って人物を追跡します。
 - trace_face.py
   - OpenCV の Haar Cascade を使って顔追跡します。
+- **pico.cli.ptz (ptz-cli)**
+  - ONVIF PTZ 物理制御と安全クランプを備えた筋肉CLI。
+- **pico.cli.memory (memory-cli)**
+  - SQLite FTS5 Trigramによる日本語想起とOKF形式書き込みを行う記憶CLI。
+- **pico.cli.perception (perception-cli)**
+  - YOLO検出テキスト出力とオンデマンドVLM画像クロップ解釈を行う感覚CLI。
 
 ## 前提条件
 
@@ -101,6 +108,36 @@ python tapo_yolo_tracking.py
 
 ```powershell
 python trace_face.py
+```
+
+### 6. 自律型CLIツールの実行方法 (筋肉・記憶・感覚)
+
+これらは `uv run` または `python -m` で実行できます。
+
+#### 6.1 筋肉 CLI (ptz-cli)
+```powershell
+# 手動パルス移動 (安全クランプ付き)
+uv run ptz-cli --action move --pan 0.15 --tilt -0.08
+# 指定IDのPID追従ロックオン
+uv run ptz-cli --action lockon --id 1
+# 緊急停止
+uv run ptz-cli --action stop
+```
+
+#### 6.2 記憶 CLI (memory-cli)
+```powershell
+# SQLite FTS5 Trigram による日本語想起 (LIKEフォールバック機能付き)
+uv run memory-cli --action search --query "猫のタマちゃん"
+# 新しい対話事実や環境ルールをOKF形式Markdownへ書き込み
+uv run memory-cli --action write --file "wiki/auto_cat_tama.md" --title "猫のタマちゃん" --content "夕方はタマちゃんに警告音を鳴らさずに話しかける。"
+```
+
+#### 6.3 感覚 CLI (perception-cli)
+```powershell
+# 現在のYOLO追跡トラック一覧をテキストで高速取得
+uv run perception-cli --action get_tracks
+# 特定Track IDのエリアをクロップし、VLM画像解釈を実行
+uv run perception-cli --action analyze_crop --id 1 --query "これは風で揺れている影ですか、それとも生き物ですか？"
 ```
 
 ## 開発・品質チェック
