@@ -68,7 +68,7 @@ def get_vlm_semaphore():
 def get_vlm_rpm_limiter():
     global vlm_rpm_limiter
     if vlm_rpm_limiter is None:
-        vlm_rpm_limiter = RPMLimiter(max_rpm=6)
+        vlm_rpm_limiter = RPMLimiter(max_rpm=get_config().ollama_max_rpm)
     return vlm_rpm_limiter
 
 

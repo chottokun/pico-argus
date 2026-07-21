@@ -36,6 +36,7 @@ def test_app_config_loads_env_and_defaults(monkeypatch) -> None:
             assert config.tapo_ip == "192.168.1.100"
             assert config.ollama_base_url == "http://localhost:11434"  # デフォルト値
             assert config.ollama_model == "gemma4:e2b"  # デフォルトで最軽量
+            assert config.ollama_max_rpm == 12  # デフォルト推奨値
             assert config.cognition_target_rule == "a person wearing a hat"  # デフォルト値
             assert config.max_limit_x == 1.15
             assert config.max_limit_y == 0.90
@@ -48,6 +49,7 @@ def test_app_config_supports_env_override(monkeypatch) -> None:
     monkeypatch.setenv("TAPO_IP", "192.168.1.100")
     monkeypatch.setenv("OLLAMA_MODEL", "gemma4:latest")  # 上書き
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://192.168.1.50:11434")  # 上書き
+    monkeypatch.setenv("OLLAMA_MAX_RPM", "20")  # 上書き
     monkeypatch.setenv("TAPO_COGNITION_TARGET_RULE", "a person with red clothing")  # 上書き
 
     # dotenvの探索に影響を与えないよう、tapo_config.jsonに対してのみFalseを返すモック
@@ -61,6 +63,7 @@ def test_app_config_supports_env_override(monkeypatch) -> None:
         config = AppConfig()
         assert config.ollama_model == "gemma4:latest"
         assert config.ollama_base_url == "http://192.168.1.50:11434"
+        assert config.ollama_max_rpm == 20
         assert config.cognition_target_rule == "a person with red clothing"
         # JSONがない場合のデフォルト値
         assert config.max_limit_x == 1.0

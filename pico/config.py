@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 # デフォルト定数
 DEFAULT_OLLAMA_BASE_URL: Final[str] = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL: Final[str] = "gemma4:e2b"  # 最も軽量なモデルをテストで優先
+DEFAULT_OLLAMA_MAX_RPM: Final[int] = 12          # ベンチマーク結果に基づく推奨値
 DEFAULT_MAX_LIMIT_X: Final[float] = 1.0
 DEFAULT_MAX_LIMIT_Y: Final[float] = 0.5
 
@@ -37,6 +38,7 @@ class AppConfig:
         # Ollama 設定（デフォルト値と .env による上書き）
         self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+        self.ollama_max_rpm: int = int(os.getenv("OLLAMA_MAX_RPM", str(DEFAULT_OLLAMA_MAX_RPM)))
         self.cognition_target_rule: str = os.getenv("TAPO_COGNITION_TARGET_RULE", "a person wearing a hat")
 
         # 起動時アライメント設定 (デフォルト True、"false", "no", "0" で無効化)
