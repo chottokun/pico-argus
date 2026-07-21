@@ -18,6 +18,8 @@ wiki.db-journal
 haarcascade_frontalface_default.xml
 tapo_config.json
 tapo_config*.json
+/monitor/*.jpg
+/monitor/*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

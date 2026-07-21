@@ -74,8 +74,31 @@ def test_lockon_loop_exits_on_interrupt(mock_tracker_class, mock_detector_class,
     actuator = PTZActuator(mock_config)
 
     # Run
-    actuator.lockon(42)
+    actuator.lockon(mock_reader_instance, 42)
 
     # Assert
     mock_ptz_instance.shutdown.assert_called_once()
-    mock_reader_instance.release.assert_called_once()
+
+@patch("pico.cli.ptz.PTZController")
+@patch("pico.cli.ptz.RTSPVideoReader")
+@patch("pico.cli.ptz.YoloDetector")
+@patch("pico.cli.ptz.SimpleIoUTracker")
+def test_lockon_loop_exits_on_class_filter(mock_tracker_class, mock_detector_class, mock_reader_class, mock_ptz_class, mock_config):
+    # Setup
+    mock_ptz_instance = MagicMock()
+    mock_ptz_class.return_value = mock_ptz_instance
+    
+    mock_reader_instance = MagicMock()
+    mock_reader_class.return_value = mock_reader_instance
+    import time
+    mock_reader_instance.get_last_frame_time.return_value = time.monotonic()
+    mock_reader_instance.read.side_effect = KeyboardInterrupt() # ループを即時脱出させる
+
+    actuator = PTZActuator(mock_config)
+
+    # Run
+    actuator.lockon(mock_reader_instance, class_filter="person")
+
+    # Assert
+    assert actuator.lockon_class_name is None
+    mock_ptz_instance.shutdown.assert_called_once()

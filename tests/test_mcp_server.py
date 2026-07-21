@@ -10,11 +10,12 @@ from pico.mcp.server import handle_list_tools, handle_call_tool
 async def test_handle_list_tools(mock_get_memory, mock_get_ptz, mock_get_perception):
     tools = await handle_list_tools()
     
-    assert len(tools) == 4
+    assert len(tools) == 5  # get_live_snapshot が増えて 5 つ
     tool_names = [t.name for t in tools]
     assert "get_active_tracks" in tool_names
     assert "analyze_crop_image" in tool_names
     assert "set_tracking_target" in tool_names
+    assert "get_live_snapshot" in tool_names
     assert "search_wiki" in tool_names
 
 @pytest.mark.anyio
@@ -70,7 +71,7 @@ async def test_call_analyze_crop_image(mock_get_rpm, mock_get_vlm_sem, mock_get_
     # Assert
     assert len(res) == 1
     assert res[0].text == "A small dog sitting."
-    mock_perception.analyze_crop_data.assert_called_once_with(1, "What is this?")
+    mock_perception.analyze_crop_data.assert_called_once_with(1, None, "What is this?")
     mock_rpm.acquire.assert_called_once()
     mock_sem.__aenter__.assert_called_once()
 
@@ -78,19 +79,70 @@ async def test_call_analyze_crop_image(mock_get_rpm, mock_get_vlm_sem, mock_get_
 @patch("pico.mcp.server.get_perception")
 @patch("pico.mcp.server.get_ptz")
 @patch("pico.mcp.server.get_memory")
-async def test_call_set_tracking_target_null(mock_get_memory, mock_get_ptz, mock_get_perception):
+@patch("pico.mcp.server.get_vlm_semaphore")
+@patch("pico.mcp.server.get_vlm_rpm_limiter")
+async def test_call_analyze_crop_image_class_filter(mock_get_rpm, mock_get_vlm_sem, mock_get_memory, mock_get_ptz, mock_get_perception):
     # Setup
-    mock_ptz = MagicMock()
-    mock_get_ptz.return_value = mock_ptz
-    
+    mock_perception = MagicMock()
+    mock_get_perception.return_value = mock_perception
+    mock_perception.analyze_crop_data.return_value = {
+        "status": "success",
+        "response": "A red suitcase."
+    }
+
+    mock_sem = AsyncMock()
+    mock_get_vlm_sem.return_value = mock_sem
+    mock_rpm = AsyncMock()
+    mock_get_rpm.return_value = mock_rpm
+
     # Run
-    res = await handle_call_tool("set_tracking_target", {"track_id": None})
+    res = await handle_call_tool("analyze_crop_image", {"class_filter": "suitcase", "query": "What color?"})
 
     # Assert
     assert len(res) == 1
-    assert "解除" in res[0].text
+    assert res[0].text == "A red suitcase."
+    mock_perception.analyze_crop_data.assert_called_once_with(None, "suitcase", "What color?")
+
+@pytest.mark.anyio
+@patch("pico.mcp.server.get_perception")
+@patch("pico.mcp.server.get_ptz")
+@patch("pico.mcp.server.get_memory")
+@patch("pico.mcp.server.get_shared_reader")
+async def test_call_set_tracking_target_class_filter(mock_get_shared_reader, mock_get_memory, mock_get_ptz, mock_get_perception):
+    # Setup
+    mock_ptz = MagicMock()
+    mock_get_ptz.return_value = mock_ptz
+    mock_get_shared_reader.return_value = MagicMock()
+    
+    # Run
+    res = await handle_call_tool("set_tracking_target", {"class_filter": "person"})
+
+    # Assert
+    assert len(res) == 1
+    assert "person" in res[0].text
     mock_ptz.stop_lockon.assert_called_once()
     mock_ptz.emergency_stop.assert_called_once()
+
+@pytest.mark.anyio
+@patch("pico.mcp.server.get_perception")
+@patch("pico.mcp.server.get_ptz")
+@patch("pico.mcp.server.get_memory")
+async def test_call_get_live_snapshot(mock_get_memory, mock_get_ptz, mock_get_perception):
+    # Setup
+    mock_perception = MagicMock()
+    mock_get_perception.return_value = mock_perception
+    mock_perception.get_live_snapshot_data.return_value = {
+        "status": "success",
+        "filepath": "monitor/live_snapshot.jpg"
+    }
+
+    # Run
+    res = await handle_call_tool("get_live_snapshot", {})
+
+    # Assert
+    assert len(res) == 1
+    assert "Live Snapshot" in res[0].text
+    mock_perception.get_live_snapshot_data.assert_called_once()
 
 @pytest.mark.anyio
 @patch("pico.mcp.server.get_perception")

@@ -11,6 +11,7 @@ from pico.video_reader import RTSPVideoReader
 from pico.detector import YoloDetector
 from pico.tracker import SimpleIoUTracker
 from pico.guardrails import GuardRails, FrameStatus
+from pico.cli.perception import COCO_CLASSES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ class PTZActuator:
         )
         self.guard = GuardRails(timeout_limit=3.0, max_area_ratio=0.75)
         self.lockon_active = False
+        self.lockon_target_id = None
+        self.lockon_class_name = None
 
     def _init_ptz(self, video_reader=None, align=False):
         if self.ptz is None:
@@ -65,14 +68,18 @@ class PTZActuator:
     def stop_lockon(self):
         """PID追従ループを停止する"""
         self.lockon_active = False
+        self.lockon_target_id = None
+        self.lockon_class_name = None
         logger.info("PTZ lockon stop requested.")
 
-    def lockon(self, track_id: int):
-        """指定のトラックIDに対してリアルタイムPID追従ループを実行する"""
+    def lockon(self, reader, track_id: int | None = None, class_filter: str | None = None):
+        """指定のトラックID、または特定のオブジェクトクラス（曖昧指定）に対してリアルタイムPID追従ループを実行する"""
+        if track_id is None and class_filter is None:
+            raise ValueError("Either track_id or class_filter must be provided for lockon.")
+
         self.lockon_active = True
-        rtsp_url = build_rtsp_url(self.config.tapo_user, self.config.tapo_pass, self.config.tapo_ip)
-        reader = RTSPVideoReader(rtsp_url)
-        time.sleep(1.5)  # ストリーム開始待ち
+        self.lockon_target_id = track_id
+        self.lockon_class_name = class_filter
 
         try:
             self._init_ptz(video_reader=reader, align=self.config.align_to_home)
@@ -87,7 +94,7 @@ class PTZActuator:
             detector = YoloDetector(model_path=onnx_path)
             tracker = SimpleIoUTracker(iou_threshold=0.3, max_lost_frames=30)
 
-            logger.info(f"🎯 PTZ Lockon Loop started for Track ID: {track_id}. Press Ctrl+C to exit.")
+            logger.info(f"🎯 PTZ Lockon Loop started. ID: {track_id}, Class Filter: {class_filter}. Press Ctrl+C to exit.")
             last_move_time = time.monotonic()
             TRACK_INTERVAL = 0.45
 
@@ -108,7 +115,30 @@ class PTZActuator:
                 sane = [d for d in detections if self.guard.is_bbox_sane(d.bbox, frame.shape)]
                 tracked = tracker.update(sane)
 
-                target = next((t for t in tracked if t.track_id == self.ptz.lock_on_id), None)
+                # ターゲットの選定と同期
+                target = None
+                if self.lockon_target_id is not None:
+                    # IDが指定（または決定）されている場合、そのオブジェクトを追尾
+                    target = next((t for t in tracked if t.track_id == self.lockon_target_id), None)
+                    if target is not None:
+                        c_name = COCO_CLASSES[target.class_id] if target.class_id < len(COCO_CLASSES) else f"unknown_{target.class_id}"
+                        self.lockon_class_name = c_name
+                elif self.lockon_class_name is not None:
+                    # IDが決まっていない、またはロストした場合に、指定クラスの最確オブジェクトを探して再捕捉 (Auto-Relock)
+                    candidates = []
+                    for t in tracked:
+                        c_name = COCO_CLASSES[t.class_id] if t.class_id < len(COCO_CLASSES) else f"unknown_{t.class_id}"
+                        if c_name == self.lockon_class_name:
+                            candidates.append(t)
+                    if candidates:
+                        best_candidate = max(candidates, key=lambda x: x.confidence)
+                        self.lockon_target_id = best_candidate.track_id
+                        target = best_candidate
+                        logger.info(f"🎯 Auto-Relock: Automatically locked onto class '{self.lockon_class_name}' (ID: {self.lockon_target_id})")
+
+                # ONVIF コントローラーのロックIDを動的同期
+                self.ptz.lock_on_id = self.lockon_target_id
+
                 current_time = time.monotonic()
                 dt = current_time - last_move_time
 
@@ -122,7 +152,10 @@ class PTZActuator:
                         if dx != 0.0 or dy != 0.0:
                             self.ptz.safe_move(dx, dy)
                     else:
-                        logger.warning(f"🎯 Lock-on Target ID {self.ptz.lock_on_id} not visible in scene.")
+                        # 追従対象を見失った場合の処理 (class_filter が指定されている場合はターゲットIDをリセットし次フレームでの再捕捉を促す)
+                        if class_filter is not None and self.lockon_target_id is not None:
+                            logger.warning(f"🎯 Target lost (ID: {self.lockon_target_id}). Scanning for another '{class_filter}'...")
+                            self.lockon_target_id = None
                         self.pid.reset()
                     last_move_time = current_time
 
@@ -132,7 +165,9 @@ class PTZActuator:
             logger.info("Lockon loop interrupted by user.")
         finally:
             logger.info("Cleaning up resources...")
-            reader.release()
+            self.lockon_active = False
+            self.lockon_target_id = None
+            self.lockon_class_name = None
             if self.ptz:
                 self.ptz.shutdown()
 
@@ -144,6 +179,7 @@ def main():
     parser = argparse.ArgumentParser(description="PTZ Actuator CLI tool")
     parser.add_argument("--action", choices=["lockon", "move", "stop"], required=True, help="Action to perform")
     parser.add_argument("--id", type=int, help="Track ID to lockon")
+    parser.add_argument("--class", dest="class_name", type=str, help="Object class name to lockon (e.g., 'person', 'suitcase')")
     parser.add_argument("--pan", type=type(0.0), default=0.0, help="Relative pan offset (-1.0 to 1.0)")
     parser.add_argument("--tilt", type=type(0.0), default=0.0, help="Relative tilt offset (-1.0 to 1.0)")
     args = parser.parse_args()
@@ -161,9 +197,15 @@ def main():
         elif args.action == "stop":
             actuator.emergency_stop()
         elif args.action == "lockon":
-            if args.id is None:
-                parser.error("--id is required for lockon action")
-            actuator.lockon(args.id)
+            if args.id is None and args.class_name is None:
+                parser.error("Either --id or --class is required for lockon action")
+            rtsp_url = build_rtsp_url(config.tapo_user, config.tapo_pass, config.tapo_ip)
+            reader = RTSPVideoReader(rtsp_url)
+            time.sleep(1.5)  # ストリーム開始待ち
+            try:
+                actuator.lockon(reader, track_id=args.id, class_filter=args.class_name)
+            finally:
+                reader.release()
     finally:
         actuator.shutdown()
 
