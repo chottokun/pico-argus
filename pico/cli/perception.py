@@ -72,7 +72,11 @@ class MonitorWindow:
                 lockon_class = self.ptz_actuator.lockon_class_name
 
             # 検出枠の描画
-            for obj in list(self.tracker.tracked_objects.values()):
+            active_tracker = self.tracker
+            if self.ptz_actuator and getattr(self.ptz_actuator, "active_tracker", None) is not None:
+                active_tracker = self.ptz_actuator.active_tracker
+
+            for obj in list(active_tracker.tracked_objects.values()):
                 x, y, w, h = obj.bbox
                 class_name = COCO_CLASSES[obj.class_id] if obj.class_id < len(COCO_CLASSES) else f"unknown_{obj.class_id}"
                 

@@ -34,6 +34,7 @@ class PTZActuator:
         self.lockon_active = False
         self.lockon_target_id = None
         self.lockon_class_name = None
+        self.active_tracker = None
 
     def _init_ptz(self, video_reader=None, align=False):
         if self.ptz is None:
@@ -93,10 +94,11 @@ class PTZActuator:
 
             detector = YoloDetector(model_path=onnx_path)
             tracker = SimpleIoUTracker(iou_threshold=0.3, max_lost_frames=30)
+            self.active_tracker = tracker
 
             logger.info(f"🎯 PTZ Lockon Loop started. ID: {track_id}, Class Filter: {class_filter}. Press Ctrl+C to exit.")
             last_move_time = time.monotonic()
-            TRACK_INTERVAL = 0.45
+            TRACK_INTERVAL = 0.1
 
             while self.lockon_active:
                 last_frame_t = reader.get_last_frame_time()
@@ -168,6 +170,7 @@ class PTZActuator:
             self.lockon_active = False
             self.lockon_target_id = None
             self.lockon_class_name = None
+            self.active_tracker = None
             if self.ptz:
                 self.ptz.shutdown()
 
