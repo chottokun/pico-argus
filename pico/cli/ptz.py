@@ -98,7 +98,7 @@ class PTZActuator:
 
             logger.info(f"🎯 PTZ Lockon Loop started. ID: {track_id}, Class Filter: {class_filter}. Press Ctrl+C to exit.")
             last_move_time = time.monotonic()
-            TRACK_INTERVAL = 0.1
+            TRACK_INTERVAL = 0.45
 
             while self.lockon_active:
                 last_frame_t = reader.get_last_frame_time()

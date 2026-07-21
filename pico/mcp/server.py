@@ -120,8 +120,8 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "track_id": {"type": ["integer", "null"], "description": "ズーム精査する対象のYOLOトラックID。省略/nullの場合は class_filter を使用"},
-                    "class_filter": {"type": ["string", "null"], "description": "ズーム精査する対象のオブジェクトクラス名 (例: 'suitcase', 'person')"},
+                    "track_id": {"type": "integer", "description": "ズーム精査する対象のYOLOトラックID。省略した場合は class_filter を使用"},
+                    "class_filter": {"type": "string", "description": "ズーム精査する対象のオブジェクトクラス名 (例: 'suitcase', 'person')"},
                     "query": {"type": "string", "description": "VLMに画像解釈させるための具体的なプロンプト・問いかけ"}
                 },
                 "required": ["query"]
@@ -129,12 +129,12 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="set_tracking_target",
-            description="物理PIDサーボループが自動追従ロックオンすべきターゲットを指定します。IDまたはクラス名 (class_filter) を指定して開始し、両方nullの場合は解除します。",
+            description="物理PIDサーボループが自動追従ロックオンすべきターゲットを指定します。IDまたはクラス名 (class_filter) を指定して開始し、両方指定しない場合は解除します。",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "track_id": {"type": ["integer", "null"], "description": "ロックオン追従する対象のトラックID"},
-                    "class_filter": {"type": ["string", "null"], "description": "自動追跡ロックオンを開始するオブジェクトクラス名 (例: 'person', 'suitcase')。見失っても自動で再捕捉します"}
+                    "track_id": {"type": "integer", "description": "ロックオン追従する対象のトラックID（省略可能）"},
+                    "class_filter": {"type": "string", "description": "自動追跡ロックオンを開始するオブジェクトクラス名 (例: 'person', 'suitcase')。見失っても自動で再捕捉します（省略可能）"}
                 }
             }
         ),
