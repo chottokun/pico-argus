@@ -1,5 +1,4 @@
 import logging
-import cv2
 import numpy as np
 from typing import Optional, Any, Dict, List
 from pico.onvif_client import PTZController

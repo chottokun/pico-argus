@@ -12,12 +12,23 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "onnxruntime>=1.20.0",
     "httpx>=0.27.0",
-    "langgraph>=0.1.0",
-    "langchain-core>=0.3.0",
+    "mcp>=1.0.0",
 ]
+
+[project.scripts]
+ptz-cli = "pico.cli.ptz:main"
+memory-cli = "pico.cli.memory:main"
+perception-cli = "pico.cli.perception:main"
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
     "ruff>=0.15.22",
 ]
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+include = ["pico*"]
+
