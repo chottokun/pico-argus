@@ -1,182 +1,205 @@
-# Tapo カメラ用サンプル
+# Pico Argus 👁️🧠
 
-このレポジトリは、Tapo カメラ(C210)の RTSP 映像を取得し、ONVIF 経由で PTZ 制御を行いながら、顔追跡や物体追跡を実行する Python サンプル集です。基本的な動作を確認するために作成しました。
+> **LLM / Multi-Modal AI 統括型「能動的知覚（Active Perception）」エッジAIシステム**
+> 
+> *ONVIF PTZ 物理制御 × 10ms YOLOテキスト知覚バッファ × オンデマンド VLM 解釈 × SQLite FTS5 / Obsidian (OKF) ナレッジグラフ長期記憶 × MCP (Model Context Protocol) サーバー標準対応*
 
-## RTSP と ONVIF
+---
 
-- RTSP : カメラのライブ映像を低遅延の受信
-- ONVIF:: カメラのパン/チルト制御の標準的なプロトコル
+## 🌟 Pico Argus とは？
 
-## サンプル
+**Pico Argus** は、エッジPC環境（VRAM 8GB〜12GB）におけるリソース消費を最小限に抑えつつ、LLM（LangGraph / Claude / Ollama）を絶対的な司令塔としてカメラの物理視線移動、高精度クロップ解析、および記憶の蓄積・想起を完全統合する**エージェント主導型アクティブ・パーセプション・システム**です。
 
-- Tapo カメラのライブ映像表示
-- ONVIF を使ったカメラのパン/チルト操作
-- カメラの可動域キャリブレーション
-- 顔検出による自動追尾
-- YOLOv8 で人物を検出して追尾
-- (新) 筋肉・記憶・感覚の自律型CLIおよびMCPサーバー
+神話に登場する不眠不休の百眼の巨人「アルゴス (Argus)」のように、物理カメラを自律操作して環境を視認し、観察事実やユーザーの指示を**ナレッジグラフ（知識網）**として学習・記憶し続けます。
 
-## 主要スクリプト・CLI
+---
 
-- main.py
-  - RTSP ストリームを表示する最小構成のサンプルです。
-- move.py
-  - キーボード操作でカメラを動かすサンプルです。
-- calibrate_tapo.py
-  - カメラの可動限界を測定し、tapo_config.json を生成します。
-- tapo_yolo_tracking.py
-  - YOLOv8 ONNX モデルを使って人物を追跡します。
-- trace_face.py
-  - OpenCV の Haar Cascade を使って顔追跡します。
-- **pico.cli.ptz (ptz-cli)**
-  - ONVIF PTZ 物理制御と安全クランプを備えた筋肉CLI。
-- **pico.cli.memory (memory-cli)**
-  - SQLite FTS5 Trigramによる日本語想起、OKF形式書き込み、および WikiLinks `[[...]]`・バックリンク自動形成によるナレッジグラフ対応記憶CLI。
-- **pico.cli.perception (perception-cli)**
-  - YOLO検出テキスト出力とオンデマンドVLM画像クロップ解釈を行う感覚CLI。
+## 💡 本システムが解決する 3 つのエッジAI課題
 
-## 前提条件
+1. **ルールベース追尾による受動性の解消**:
+   従来のシステムのように単に動体に反応して画角を動かすのではなく、LLMエージェントが自律的意図を持って「特定のターゲットへ接近し、ズームして解釈し、記憶に記録する」という能動的動作を実現。
+2. **常時 VLM 起動による VRAM 枯渇の防止**:
+   VLM（マルチモーダルLLM）を常時推論させず通常時はスリープ状態にし、VRAM占有量わずか `500MB` / 推論時間 `10ms` の **YOLO ONNX + ByteTrack** が常時テキスト化知覚バッファとしてステートを更新。意味的精査が必要な瞬間のみオンデマンドで VLM を起動。
+3. **`track_id` の限界と長期記憶（Re-ID）の結合**:
+   一時的にカウントアップ・消失するトラッカーID (`track_id`) を「使い捨ての数秒間ポインタ」として割り切り、長期的記憶には**「空間絶対座標 ＋ VLM意味的特徴 ＋ WikiLinks 相互ナレッジグラフ」**を用いて同一物を正確に特定（Re-ID）。
 
-- Python 3.13 以上
-- Tapo カメラ本体
-- カメラの RTSP / ONVIF が利用できる環境
+---
 
-## セットアップ
+## 🏗️ システムアーキテクチャ
 
-1. 仮想環境を作成します。
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+```
+                               ┌──────────────────────────────────────────────┐
+                               │     LLMエージェント / MCP Client (Claude)     │
+                               │           - 脳内プランナー / 司令塔 -        │
+                               └─────┬──────────────┬──────────────┬──────────┘
+                                     │              │              │
+        ┌────────────────────────────┘              │              └────────────────────────────┐
+        ▼ (Tool: set_tracking_target)               ▼ (Tool: analyze_crop_image)                ▼ (Tool: search_wiki / write_wiki)
+┌───────────────┐                          ┌───────────────┐                          ┌──────────────────┐
+│  物理PTZサーボ │                          │   オンデマンド │                          │   SQLite 3.34+   │
+│   (筋肉運動)   │                          │    VLM解釈    │                          │   OKF Wiki Base  │
+└───────┬───────┘                          └───────┬───────┘                          └─────────┬────────┘
+        │ (カメラ旋回・ズーム)                      │ (高精細クロップ解析)                       │ (相互リンク・バックリンク)
+        ▼                                          ▼                                          ▼
+ ───────┴──────────────────────────────────────────┴──────────────────────────────────────────┴─────────────────
+                                             物理エッジ環境
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+        ▲                                                                              ▲
+        │ (10ms 高速フレームキャプチャ)                                                   │ (Track ID / クラス名 / 速度ベクトル)
+        └──────────────────── [ 非ブロッキング YOLO-ONNX ＋ ByteTrack ] ────────────────┘
+                                          (常時稼働テキスト知覚バッファ)
 ```
 
-2. 依存関係をインストールします。
+---
 
+## 🧩 主要コンポーネント & CLI ツール
+
+本システムは独立した役割を持つ 3 つの自律型 CLI および統合 MCP サーバーで構成されています。
+
+| モジュール / CLI | 役割 | 主な機能 |
+| :--- | :--- | :--- |
+| **`pico.cli.ptz` (`ptz-cli`)** | 筋肉 (Physical Actuator) | ONVIF PTZ 物理制御、PID サーボロックオン、安全クランプ制限、Slew Rate 加減速制御 |
+| **`pico.cli.perception` (`perception-cli`)** | 感覚 (Sensing & VLM) | 10ms YOLO-ONNX ＋ ByteTrack テキスト知覚、Ollama VLM (`gemma4:e2b`) スポットクロップ解釈 |
+| **`pico.cli.memory` (`memory-cli`)** | 記憶 (Long-Term Memory) | SQLite 3.34+ FTS5 Trigram 日本語想起、Obsidian OKF Markdown 出力、WikiLinks (`[[...]]`) 相互リンク＆バックリンク自動形成、エイリアス名寄せ |
+| **`pico.mcp.server`** | MCP 統合サーバー | Claude Code / Claude Desktop / 外部エージェントと連携する MCP (Model Context Protocol) サーバー |
+
+---
+
+## 🛠️ MCP (Model Context Protocol) サーバー仕様
+
+[docs/mcp_specification.md](file:///e:/Python%20Scripts/Pico/docs/mcp_specification.md) に基づき、以下の 6 つのツールを外部 LLM クライアントへ標準提供します：
+
+1. `get_active_tracks`: 現在の YOLO 追跡オブジェクトのテキスト化メタデータを一括高速取得。
+2. `analyze_crop_image`: 特定オブジェクトのクロップ領域に対する Ollama VLM スポット視覚解析。
+3. `set_tracking_target`: 物理 PID サーボによる自動追従ロックオンの開始・解除。
+4. `get_live_snapshot`: 人間向け報告用スナップショット画像のキャプチャ。
+5. `search_wiki`: SQLite FTS5 Trigram による過去の思い出・行動ルールのミリ秒想起。
+6. `write_wiki`: 観測事実・ユーザー指示・検索知見の OKF Markdown 書き込み ＋ WikiLinks / バックリンクリアルタイム更新。
+
+---
+
+## 🚀 セットアップガイド
+
+### 1. 前提条件
+- Python 3.13 以上
+- [uv](https://github.com/astral-sh/uv) (パッケージマネージャー)
+- Tapo カメラ (C210 等 / RTSP ポート 554 & ONVIF ポート 2020 が利用可能な環境)
+- [Ollama](https://ollama.com/) (ローカル VLM 推論用 / 例: `gemma4:e2b`)
+
+### 2. インストール
 ```powershell
+# リポジトリのクローン
+git clone https://github.com/chottokun/pico-argus.git
+cd pico-argus
+
+# 依存関係の同期
 uv sync
 ```
 
-> 依存関係は uv で管理しています。必要に応じて `uv add <package>` で追加してください。
-
-3. カメラ接続情報を設定します。
-
-プロジェクト直下に .env を作成し、.env.example をコピーして内容を編集してください。
+### 3. 環境変数の設定 (`.env`)
+`.env.example` をコピーして `.env` を作成し、接続情報を設定してください：
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-その後、.env の値を自分の環境に合わせて変更してください。
+`.env` 設定例:
+```ini
+TAPO_USER=your_tapo_onvif_username
+TAPO_PASS=your_tapo_onvif_password
+TAPO_IP=10.3.100.176
 
-> Tapo カメラの ONVIF 制御には、アプリの「高度な設定」で作成したユーザー名とパスワードを使う構成が一般的です。通常のアプリログイン情報とは別である場合があります。
-
-## 実行方法
-
-### 1. ライブ映像表示
-
-```powershell
-python main.py
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=gemma4:e2b
+OLLAMA_MAX_RPM=12
 ```
 
-### 2. 手動でカメラを動かす
+---
 
-```powershell
-python move.py
-```
+## 💻 実行方法
 
-- W / A / S / D で移動
-- Q で終了
+### 1. 自律型 CLI ツールの単体実行
 
-### 3. 可動域をキャリブレーションする
-
-```powershell
-python calibrate_tapo.py
-```
-
-実行後、tapo_config.json が生成されます。以降の追跡スクリプトはこの値を参照して安全な範囲で動作します。
-
-### 4. YOLO による人物追跡
-
-```powershell
-python tapo_yolo_tracking.py
-```
-
-- 事前に yolov8s.onnx が必要です。
-- 取得できない場合はスクリプト内で自動ダウンロードを試みます。
-
-### 5. 顔追跡
-
-```powershell
-python trace_face.py
-```
-
-### 6. 自律型CLIツールの実行方法 (筋肉・記憶・感覚)
-
-これらは `uv run` または `python -m` で実行できます。
-
-#### 6.1 筋肉 CLI (ptz-cli)
+#### 筋肉 CLI (`ptz-cli`)
 ```powershell
 # 手動パルス移動 (安全クランプ付き)
 uv run ptz-cli --action move --pan 0.15 --tilt -0.08
-# 指定IDのPID追従ロックオン
+
+# 指定 ID の PID 追従ロックオン
 uv run ptz-cli --action lockon --id 1
+
 # 緊急停止
 uv run ptz-cli --action stop
 ```
 
-#### 6.2 記憶 CLI (memory-cli)
+#### 記憶 CLI (`memory-cli`)
 ```powershell
-# SQLite FTS5 Trigram による日本語想起 (LIKEフォールバック機能付き)
+# SQLite FTS5 Trigram による日本語想起
 uv run memory-cli --action search --query "猫のタマちゃん"
-# 新しい対話事実や環境ルールをOKF形式Markdownへ書き込み
-uv run memory-cli --action write --file "wiki/auto_cat_tama.md" --title "猫のタマちゃん" --content "夕方はタマちゃんに警告音を鳴らさずに話しかける。"
+
+# OKF 形式 Markdown への記録 ＋ WikiLinks 相互インデックス登録
+uv run memory-cli --action write --file "wiki/known_objects_tama.md" --title "飼い猫タマちゃん" --content "夕方は [[庭 Zone B]] に訪れる。" --tags "pet cat"
 ```
 
-#### 6.3 感覚 CLI (perception-cli)
+#### 感覚 CLI (`perception-cli`)
 ```powershell
-# 現在のYOLO追跡トラック一覧をテキストで高速取得
+# YOLO 追跡トラック一覧をテキストで取得
 uv run perception-cli --action get_tracks
-# 特定Track IDのエリアをクロップし、VLM画像解釈を実行
-uv run perception-cli --action analyze_crop --id 1 --query "これは風で揺れている影ですか、それとも生き物ですか？"
+
+# 特定 Track ID のエリアをクロップし VLM 解釈を実行
+uv run perception-cli --action analyze_crop --id 1 --query "手元に何を持っていますか？"
 ```
 
-## 開発・品質チェック
+### 2. MCP サーバーの起動 & クライアントマウント
 
-- 依存関係の同期: `uv sync`
-- テスト実行: `uv run pytest`
-- Lint 実行: `uv run ruff check .`
-- セキュリティスキャン: `uv audit` と `gitleaks detect --verbose --source=.`
-
-## よくあるトラブル
-
-- カメラに接続できない
-  - TAPO_IP が正しいか確認してください。
-  - RTSP / ONVIF が有効なカメラか確認してください。
-  - ユーザー名・パスワードが正しいか確認してください。
-- 動かない
-  - ONVIF ポート 2020 への到達性を確認してください。
-  - 事前に calibrate_tapo.py を実行し、tapo_config.json を生成してください。
-- モデルが見つからない
-  - yolov8s.onnx や haarcascade_frontalface_default.xml が存在するか確認してください。
-
-## セキュリティチェック
-
-CI では依存関係の脆弱性スキャンを自動実行します。
-
-### GitHub Actions
-
-- [.github/workflows/security.yml](.github/workflows/security.yml)
-- `uv` と `pip-audit` を使って依存関係の脆弱性を検査します。
-
-### ローカルで実行する場合
+Claude Code や Claude Desktop から接続するための stdio サーバーを起動します：
 
 ```powershell
-uv sync
-uv tool run pip-audit --strict
+uv run python -m pico.mcp.server
 ```
 
-## 補足
+#### Claude Code / Claude Desktop 設定例 (`mcpServers`)
+```json
+{
+  "mcpServers": {
+    "cognitive-surveillance": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "pico.mcp.server"],
+      "env": {
+        "PYTHONPATH": "."
+      }
+    }
+  }
+}
+```
 
-- すべてのスクリプトは RTSP URL を利用して映像を読み込みます。
-- 追跡系スクリプトは、カメラを動かすときに安全上の制限を持つ構成です。
-- 画面に映る表示を確認しながら、必要に応じて各スクリプト内のパラメータを調整してください。
+---
+
+## 🧪 開発 & 品質保証
+
+本プロジェクトでは厳しい品質・セキュリティテストを導入しています：
+
+```powershell
+# 全単体テストの実行 (59件)
+uv run pytest
+
+# 静的コードチェック & 自動修正
+uv run ruff check --fix
+
+# 依存関係セキュリティ脆弱性監査
+uv audit
+```
+
+---
+
+## 📘 関連ドキュメント
+
+- [camera_agent.md](file:///e:/Python%20Scripts/Pico/docs/camera_agent.md): 能動的知覚（Active Perception）詳細設計仕様書
+- [mcp_specification.md](file:///e:/Python%20Scripts/Pico/docs/mcp_specification.md): MCP サーバー接続・ツール詳細仕様書
+- [memory_cli_specification.md](file:///e:/Python%20Scripts/Pico/docs/memory_cli_specification.md): 長期記憶 OKF / ナレッジグラフデータ構造仕様書
+
+---
+
+## 📜 ライセンス
+
+MIT License
