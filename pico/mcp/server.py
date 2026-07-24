@@ -171,6 +171,29 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["filepath", "title", "content"]
             }
+        ),
+        types.Tool(
+            name="get_perception_status",
+            description="現在のシステム全体の知覚稼働状況、FPS、アクティブな検出オブジェクト一覧、および直近で能動発火したイベント履歴を一括照会・問い合わせします。",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        types.Tool(
+            name="configure_event_filter",
+            description="能動的イベント発火の過剰抑止・抑制ルールのカスタマイズ設定（クールダウン秒数、監視対象クラス制限）を行います。",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "cooldown_sec": {"type": "number", "description": "同一イベント・IDに対する再発火抑制秒数 (例: 5.0)"},
+                    "allowed_classes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "監視発火対象とするクラス名リスト (例: ['person', 'car'])。null の場合は全クラス対象。"
+                    }
+                }
+            }
         )
     ]
 
@@ -302,6 +325,29 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 aliases
             )
             return [types.TextContent(type="text", text=f"Success: Knowledge saved to {filepath}. Result: {json.dumps(res, ensure_ascii=False)}")]
+
+        elif name == "get_perception_status":
+            loop = asyncio.get_running_loop()
+            active_perception = get_perception()
+            active_perception.set_ptz_actuator(get_ptz())
+            res = await loop.run_in_executor(None, active_perception.get_perception_status_data)
+            return [types.TextContent(type="text", text=json.dumps(res, indent=2, ensure_ascii=False))]
+
+        elif name == "configure_event_filter":
+            cooldown_sec = arguments.get("cooldown_sec")
+            allowed_classes = arguments.get("allowed_classes")
+            if cooldown_sec is not None:
+                cooldown_sec = float(cooldown_sec)
+            loop = asyncio.get_running_loop()
+            active_perception = get_perception()
+            active_perception.set_ptz_actuator(get_ptz())
+            res = await loop.run_in_executor(
+                None,
+                active_perception.configure_event_filter_data,
+                cooldown_sec,
+                allowed_classes
+            )
+            return [types.TextContent(type="text", text=f"Success: Event filter configured. Updated perception status:\n{json.dumps(res, indent=2, ensure_ascii=False)}")]
 
         else:
             raise ValueError(f"Unknown tool: {name}")

@@ -154,7 +154,36 @@ SQLite FTS5 Trigram 検索を用い、過去の観測思い出や環境固有の
     - `tags` (string, オプション): スペース区切りの分類用タグ文字列 (例: `'pet cat profile'`)。
     - `aliases` (array or string, オプション): 表記ゆれ名寄せ用の別名リスト (例: `["タマ", "猫のタマ"]`)。
 *   **レスポンス例:**
-    > 「Success: Knowledge saved to wiki/known_objects_tama.md. Result: {"status": "success", "filepath": "wiki/known_objects_tama.md"}」
+### 3.7 `get_perception_status`
+常時知覚エンジンの現在の稼働状況（FPS）、リアルタイム追跡リスト、ロックオン設定、および直近で発火した能動イベント履歴を一括照会・問い合わせします。
+
+*   **引数:** なし
+*   **レスポンス例:**
+    ```json
+    {
+      "engine_status": "RUNNING",
+      "fps": 29.5,
+      "active_track_count": 1,
+      "active_tracks": [
+        {"track_id": 1, "class": "person", "bbox": [100, 100, 200, 400], "confidence": 0.85}
+      ],
+      "cooldown_sec": 5.0,
+      "min_stable_frames": 3,
+      "allowed_classes": null,
+      "recent_events": [
+        {"event_type": "NEW_OBJECT", "track_id": 1, "class_name": "person", "timestamp": "08:28:10"}
+      ]
+    }
+    ```
+
+### 3.8 `configure_event_filter`
+能動的イベント発火の過剰抑止・抑制ルール（同一オブジェクト再発火防止クールダウン秒数、発火対象クラスの制限）をカスタマイズ設定します。
+
+*   **引数:**
+    - `cooldown_sec` (number, オプション): 同一イベント・IDに対する再発火抑制秒数 (例: `5.0`)。
+    - `allowed_classes` (array of string, オプション): 監視発火対象とするクラス名リスト (例: `["person", "car"]`)。null の場合は全クラス対象。
+*   **レスポンス例:**
+    > 「Success: Event filter configured. Updated perception status: { ... }」
 
 ---
 

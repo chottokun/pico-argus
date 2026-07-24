@@ -10,7 +10,7 @@ from pico.mcp.server import handle_list_tools, handle_call_tool
 async def test_handle_list_tools(mock_get_memory, mock_get_ptz, mock_get_perception):
     tools = await handle_list_tools()
     
-    assert len(tools) == 6  # write_wiki が増えて 6 つ
+    assert len(tools) == 8  # 新規2ツール追加により 8 つ
     tool_names = [t.name for t in tools]
     assert "get_active_tracks" in tool_names
     assert "analyze_crop_image" in tool_names
@@ -18,6 +18,8 @@ async def test_handle_list_tools(mock_get_memory, mock_get_ptz, mock_get_percept
     assert "get_live_snapshot" in tool_names
     assert "search_wiki" in tool_names
     assert "write_wiki" in tool_names
+    assert "get_perception_status" in tool_names
+    assert "configure_event_filter" in tool_names
 
 @pytest.mark.anyio
 @patch("pico.mcp.server.get_perception")

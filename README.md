@@ -67,14 +67,16 @@
 
 ## 🛠️ MCP (Model Context Protocol) サーバー仕様
 
-[docs/mcp_specification.md](file:///e:/Python%20Scripts/Pico/docs/mcp_specification.md) に基づき、以下の 6 つのツールを外部 LLM クライアントへ標準提供します：
+[docs/mcp_specification.md](file:///e:/Python%20Scripts/Pico/docs/mcp_specification.md) に基づき、以下の 8 つのツールを外部 LLM クライアントへ標準提供します：
 
-1. `get_active_tracks`: 現在の YOLO 追跡オブジェクトのテキスト化メタデータを一括高速取得。
+1. `get_active_tracks`: 常時更新されている YOLO 追跡オブジェクトのテキスト化メタデータを一括高速取得（0ms）。
 2. `analyze_crop_image`: 特定オブジェクトのクロップ領域に対する Ollama VLM スポット視覚解析。
 3. `set_tracking_target`: 物理 PID サーボによる自動追従ロックオンの開始・解除。
 4. `get_live_snapshot`: 人間向け報告用スナップショット画像のキャプチャ。
 5. `search_wiki`: SQLite FTS5 Trigram による過去の思い出・行動ルールのミリ秒想起。
 6. `write_wiki`: 観測事実・ユーザー指示・検索知見の OKF Markdown 書き込み ＋ WikiLinks / バックリンクリアルタイム更新。
+7. `get_perception_status`: 常時知覚エンジンの稼働状況（FPS）、検出中オブジェクト一覧、および能動発火イベント履歴の照会。
+8. `configure_event_filter`: 能動的イベント発火の過剰抑止・抑制ルール（クールダウン秒数、監視対象クラス制限）の動的変更。
 
 ---
 
@@ -112,6 +114,29 @@ TAPO_IP=10.3.100.176
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma4:e2b
 OLLAMA_MAX_RPM=12
+```
+
+### 4. 実機キャリブレーションの実行と動作確認
+
+物理カメラ（Tapo）の可動限界の測定と、物理保護のための安全クランプ限界値を設定ファイルに保存するため、キャリブレーションを実行します。
+
+```powershell
+uv run python calibrate_tapo.py
+```
+
+実行が完了すると、カメラは物理可動域の真の中心（原点）に移動して停止し、安全クランプ限界値が `tapo_config.json` に保存されます。
+
+**測定結果の例（2026-07-25 実機検証済み）:**
+- **左右可動限界 (`MAX_LIMIT_X`)**: `±0.89`
+- **上下可動限界 (`MAX_LIMIT_Y`)**: `±0.89`
+
+設定ファイル (`tapo_config.json`):
+```json
+{
+    "MAX_LIMIT_X": 0.89,
+    "MAX_LIMIT_Y": 0.89,
+    "CALIBRATED_AT": "2026-07-25 08:08:47"
+}
 ```
 
 ---
