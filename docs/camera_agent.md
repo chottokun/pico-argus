@@ -158,3 +158,14 @@ class AgentState(TypedDict):
 7. **可変レートリミッター（RPMLimiter）によるローカル VLM 負荷調整**
    ローカル VLM（Ollama）の同時推論排他（Semaphore）制御に加え、環境変数 `OLLAMA_MAX_RPM` を介して動的に最大 RPM（Requests Per Minute）を設定可能な `RPMLimiter` を適用する。Ollama の平均処理時間（約 1.87秒）を基準とし、推奨値 `OLLAMA_MAX_RPM=12` にて Ollama の過負荷およびハングを論理的に防止する。
 
+## 8. AIエージェント運用・行動規範（Agent Operational Rules）
+
+本システムを操作するAIエージェント（LLM）は、以下の手順およびルールを厳格に遵守しなければならない。
+
+1. **直接的な画像ファイルアクセスの禁止 (No Image Direct Access)**:
+   - `get_live_snapshot` などのツールによって返された画像ファイルパス（例: `monitor/live_snapshot.jpg`）に対し、AIエージェントがファイル読み込みツール（`view_file` 等）を使用して画像を直接ロードし、自己のビジョン機能で状況を判断・解釈して回答することは**厳重に禁止**する。
+   - `get_live_snapshot` は、最終的に「人間のユーザー」に現状のライブ映像を提示するためにのみ使用する。
+2. **能動的知覚パイプラインの順守 (Strict Active Perception Pipeline)**:
+   - 状況把握や動作確認を行う際は、まず `get_active_tracks` を呼び出してYOLO/ByteTrackが検出したオブジェクトのテキストメタデータ（ID、クラス、座標）を把握する。
+   - 次に、詳細な視覚情報を得るために、必ず `analyze_crop_image` に `track_id` や `class_filter` を指定して、プログラム経由でVLM（Ollama）に解析を行わせる。
+   - 特定のオブジェクトがない場合（画像全体の状況を知りたい場合）も、`analyze_crop_image` の `track_id` と `class_filter` を両方省略し、`query`（例: "画像全体の様子を詳しく教えてください"）のみを指定して実行することで、VLM経由で画像全体の状況を把握しなければならない。

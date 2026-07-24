@@ -116,12 +116,12 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="analyze_crop_image",
-            description="特定のオブジェクトを高解像度ズームクロップし、オンデマンドでVLM画像解釈を実行します。ID指定のほか、class_filter にオブジェクト名 (例: 'suitcase', 'person') を指定可能です。",
+            description="特定のオブジェクトを高解像度ズームクロップ、またはカメラの全体フレームを対象とし、オンデマンドでVLM画像解釈を実行します。track_id と class_filter を両方とも省略（または null）した場合は、ズームクロップを行わずにカメラの全体画像に対して画像解釈を実行します。",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "track_id": {"type": "integer", "description": "ズーム精査する対象のYOLOトラックID。省略した場合は class_filter を使用"},
-                    "class_filter": {"type": "string", "description": "ズーム精査する対象のオブジェクトクラス名 (例: 'suitcase', 'person')"},
+                    "track_id": {"type": "integer", "description": "ズーム精査する対象のYOLOトラックID。省略した場合は class_filter または全体フレーム解析になります。"},
+                    "class_filter": {"type": "string", "description": "ズーム精査する対象のオブジェクトクラス名 (例: 'suitcase', 'person')。省略した場合は全体フレーム解析になります。"},
                     "query": {"type": "string", "description": "VLMに画像解釈させるための具体的なプロンプト・問いかけ"}
                 },
                 "required": ["query"]
@@ -140,7 +140,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_live_snapshot",
-            description="カメラの現在のライブ映像をキャプチャし、その画像をチャット欄に表示します。",
+            description="カメラの現在のライブ映像をキャプチャし、その画像をチャット欄に表示します。※注意: AIエージェントは自身が画像情報を理解・解釈する目的でこのツールを使用してはなりません。AI自身による視覚精査や状況把握には、必ず get_active_tracks と analyze_crop_image を使用してください。本ツールは、人間のユーザーにライブ画像を報告・提示するためだけに使用するものです。",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -245,7 +245,12 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 t = int(time.time())
                 abs_path = os.path.abspath(res["filepath"]).replace("\\", "/")
                 md_img = f"![Live Snapshot](file:///{abs_path}?t={t})"
-                return [types.TextContent(type="text", text=f"Success: 現在のカメラフレームをキャプチャしました。\n\n{md_img}")]
+                alert_msg = (
+                    "\n\n[SYSTEM ALERT: AI agents MUST NOT load, view, or analyze this image file directly. "
+                    "For any automated target inspection or visual understanding, you MUST call 'get_active_tracks' first, "
+                    "then use 'analyze_crop_image' with a query.]"
+                )
+                return [types.TextContent(type="text", text=f"Success: 現在のカメラフレームをキャプチャしました。\n\n{md_img}{alert_msg}")]
 
         elif name == "search_wiki":
             query = str(arguments["query"])

@@ -24,9 +24,9 @@ async def main():
             print(f"⚠️ ファイルが存在しません: {path}")
             continue
             
-        print(f"\n==========================================")
+        print("\n==========================================")
         print(f"🔍 画像解析中: {path} (サイズ: {os.path.getsize(path)} bytes)")
-        print(f"==========================================")
+        print("==========================================")
         
         img = cv2.imread(path)
         if img is None:

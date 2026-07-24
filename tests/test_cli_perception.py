@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch, AsyncMock
 import numpy as np
 import json
 import time
-import os
 from pico.config import AppConfig
 from pico.cli.perception import OnDemandPerceptionCLI
 from pico.detector import Detection
@@ -163,3 +162,42 @@ def test_get_live_snapshot(mock_write, mock_monitor, mock_vlm_class, mock_detect
         mock_write.assert_called_once()
     finally:
         cli.close()
+
+@patch("pico.cli.perception.RTSPVideoReader")
+@patch("pico.cli.perception.YoloDetector")
+@patch("pico.cli.perception.OllamaVisionClient")
+@patch("pico.cli.perception.MonitorWindow")
+@patch("cv2.imwrite")
+def test_analyze_crop_whole_frame(mock_write, mock_monitor, mock_vlm_class, mock_detector_class, mock_reader_class, mock_config):
+    # Setup
+    mock_reader = MagicMock()
+    mock_reader_class.return_value = mock_reader
+    mock_reader.get_last_frame_time.return_value = time.monotonic()
+    
+    dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    mock_reader.read.return_value = (True, dummy_frame)
+
+    mock_detector = MagicMock()
+    mock_detector_class.return_value = mock_detector
+    # detectは空にする（オブジェクトがない状態）
+    mock_detector.detect.return_value = []
+
+    mock_vlm = MagicMock()
+    mock_vlm_class.return_value = mock_vlm
+    mock_vlm.analyze_scene = AsyncMock(return_value="A clean room with no people.")
+    mock_vlm.close = AsyncMock()
+
+    cli = OnDemandPerceptionCLI(mock_config, shared_reader=mock_reader)
+    try:
+        # track_id=None, class_filter=None で呼び出し
+        res = cli.analyze_crop_data(track_id=None, class_filter=None, query="Describe the room.")
+        assert res["status"] == "success"
+        assert res["response"] == "A clean room with no people."
+        # cv2.imwrite ("monitor/latest_crop.jpg", crop) が呼ばれるはず（cropはframe全体）
+        mock_write.assert_called_once()
+        # 呼ばれた時の第2引数がdummy_frame（画像全体）であることを確認
+        args, kwargs = mock_write.call_args
+        np.testing.assert_array_equal(args[1], dummy_frame)
+    finally:
+        cli.close()
+

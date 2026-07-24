@@ -216,6 +216,7 @@ class OnDemandPerceptionCLI:
         tracked = self.tracker.update(sane)
 
         target = None
+        crop = None
         
         # 1. track_id のマッチング試行
         if track_id is not None:
@@ -269,20 +270,26 @@ class OnDemandPerceptionCLI:
                                 self.bbox = bbox
                         target = DummyTarget(best_raw.bbox)
 
-        if not target:
-            logger.error(f"Target not found for ID: {track_id}, class_filter: {class_filter}")
-            return {"error": f"Target not found for ID: {track_id}, class_filter: {class_filter}"}
+        # 3. track_id も class_filter も指定されていない場合は、フレーム全体を対象とする
+        if track_id is None and class_filter is None:
+            logger.info("No track_id or class_filter specified. Analyzing the entire frame.")
+            crop = frame
+        else:
+            if not target:
+                logger.error(f"Target not found for ID: {track_id}, class_filter: {class_filter}")
+                return {"error": f"Target not found for ID: {track_id}, class_filter: {class_filter}"}
 
-        x, y, w, h = target.bbox
-        img_h, img_w = frame.shape[:2]
-        
-        x1 = max(0, x)
-        y1 = max(0, y)
-        x2 = min(img_w, x + w)
-        y2 = min(img_h, y + h)
+            x, y, w, h = target.bbox
+            img_h, img_w = frame.shape[:2]
+            
+            x1 = max(0, x)
+            y1 = max(0, y)
+            x2 = min(img_w, x + w)
+            y2 = min(img_h, y + h)
 
-        crop = frame[y1:y2, x1:x2]
-        if crop.size == 0:
+            crop = frame[y1:y2, x1:x2]
+
+        if crop is None or crop.size == 0:
             logger.error("Cropped region is empty.")
             return {"error": "Cropped region is empty"}
 
