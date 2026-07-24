@@ -10,13 +10,14 @@ from pico.mcp.server import handle_list_tools, handle_call_tool
 async def test_handle_list_tools(mock_get_memory, mock_get_ptz, mock_get_perception):
     tools = await handle_list_tools()
     
-    assert len(tools) == 5  # get_live_snapshot が増えて 5 つ
+    assert len(tools) == 6  # write_wiki が増えて 6 つ
     tool_names = [t.name for t in tools]
     assert "get_active_tracks" in tool_names
     assert "analyze_crop_image" in tool_names
     assert "set_tracking_target" in tool_names
     assert "get_live_snapshot" in tool_names
     assert "search_wiki" in tool_names
+    assert "write_wiki" in tool_names
 
 @pytest.mark.anyio
 @patch("pico.mcp.server.get_perception")
@@ -163,3 +164,46 @@ async def test_call_search_wiki(mock_get_memory, mock_get_ptz, mock_get_percepti
     assert len(res) == 1
     assert "Test Title" in res[0].text
     mock_memory.search_knowledge_data.assert_called_once_with("Test")
+
+@pytest.mark.anyio
+@patch("pico.mcp.server.get_perception")
+@patch("pico.mcp.server.get_ptz")
+@patch("pico.mcp.server.get_memory")
+async def test_call_write_wiki(mock_get_memory, mock_get_ptz, mock_get_perception):
+    # Setup
+    mock_memory = MagicMock()
+    mock_get_memory.return_value = mock_memory
+    mock_memory.write_knowledge_data.return_value = {
+        "status": "success",
+        "filepath": "wiki/test_write.md"
+    }
+
+    # Run
+    res = await handle_call_tool("write_wiki", {
+        "filepath": "wiki/test_write.md",
+        "title": "New Knowledge",
+        "content": "Test knowledge content",
+        "tags": "test knowledge"
+    })
+
+    # Assert
+    assert len(res) == 1
+    assert "Success" in res[0].text or "success" in res[0].text
+    mock_memory.write_knowledge_data.assert_called_once_with(
+        "wiki/test_write.md", "New Knowledge", "Test knowledge content", "test knowledge", None
+    )
+
+@pytest.mark.anyio
+@patch("pico.mcp.server.get_perception")
+@patch("pico.mcp.server.get_ptz")
+@patch("pico.mcp.server.get_memory")
+async def test_call_write_wiki_missing_args(mock_get_memory, mock_get_ptz, mock_get_perception):
+    # Run with missing content
+    res = await handle_call_tool("write_wiki", {
+        "filepath": "wiki/test_write.md",
+        "title": "New Knowledge"
+    })
+
+    # Assert
+    assert len(res) == 1
+    assert "Error" in res[0].text

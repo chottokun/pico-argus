@@ -144,6 +144,18 @@ SQLite FTS5 Trigram 検索を用い、過去の観測思い出や環境固有の
     ]
     ```
 
+### 3.6 `write_wiki`
+新しい観測事実、ユーザー指定ルール、会話インサイト、外部検索結果を OKF (Obsidian Knowledge Format) 形式 Markdown に書き込み、SQLite FTS5 インデックス、WikiLinks (`[[...]]`)、およびエイリアス（名寄せ）テーブルを同期更新します。
+
+*   **引数:**
+    - `filepath` (string, **必須**): 保存先の Markdown ファイルパス (例: `'wiki/known_objects_tama.md'`)。
+    - `title` (string, **必須**): 記憶・ナレッジのタイトル。
+    - `content` (string, **必須**): 記録する観察内容・ルール本文 (本文内の `[[項目名]]` は相互リンクとして自動抽出)。
+    - `tags` (string, オプション): スペース区切りの分類用タグ文字列 (例: `'pet cat profile'`)。
+    - `aliases` (array or string, オプション): 表記ゆれ名寄せ用の別名リスト (例: `["タマ", "猫のタマ"]`)。
+*   **レスポンス例:**
+    > 「Success: Knowledge saved to wiki/known_objects_tama.md. Result: {"status": "success", "filepath": "wiki/known_objects_tama.md"}」
+
 ---
 
 ## 🧠 4. 推奨される協調動作（オーケストレーション）フロー
@@ -164,5 +176,5 @@ LLMクライアント（Claude Code 等）から本サーバーを使用する�
                [ 4. search_wiki で過去の履歴を想起確認 ]
                      │
                      ▼
-               [ 5. 新情報があれば memory-cli (またはWiki保存) で長期記憶へ ]
+               [ 5. 新情報があれば write_wiki で直接長期記憶へコミット ]
 ```

@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 import time
+import json
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
 import mcp.types as types
@@ -156,6 +157,20 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["query"]
             }
+        ),
+        types.Tool(
+            name="write_wiki",
+            description="新しい観測事実、ユーザー指定ルール、会話インサイト、外部検索結果を OKF 形式 Markdown に書き込み、SQLite インデックスを更新します。",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "書き込み対象の Markdown パス (例: 'wiki/known_objects_tama.md')"},
+                    "title": {"type": "string", "description": "記憶・ナレッジのタイトル"},
+                    "content": {"type": "string", "description": "記録する本文・観察事実"},
+                    "tags": {"type": "string", "description": "スペース区切りのタグ (任意)"}
+                },
+                "required": ["filepath", "title", "content"]
+            }
         )
     ]
 
@@ -258,6 +273,35 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             active_memory = get_memory()
             res = await loop.run_in_executor(None, active_memory.search_knowledge_data, query)
             return [types.TextContent(type="text", text=str(res))]
+
+        elif name == "write_wiki":
+            filepath = arguments.get("filepath")
+            title = arguments.get("title")
+            content = arguments.get("content")
+            tags = arguments.get("tags", "")
+            aliases_arg = arguments.get("aliases")
+            
+            aliases = None
+            if isinstance(aliases_arg, list):
+                aliases = aliases_arg
+            elif isinstance(aliases_arg, str) and aliases_arg.strip():
+                aliases = [a.strip() for a in aliases_arg.split(",") if a.strip()]
+
+            if not filepath or not title or not content:
+                return [types.TextContent(type="text", text="Error: 'filepath', 'title', and 'content' are required for write_wiki.")]
+
+            loop = asyncio.get_running_loop()
+            active_memory = get_memory()
+            res = await loop.run_in_executor(
+                None,
+                active_memory.write_knowledge_data,
+                filepath,
+                title,
+                content,
+                tags,
+                aliases
+            )
+            return [types.TextContent(type="text", text=f"Success: Knowledge saved to {filepath}. Result: {json.dumps(res, ensure_ascii=False)}")]
 
         else:
             raise ValueError(f"Unknown tool: {name}")
