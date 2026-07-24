@@ -31,7 +31,7 @@
 - **pico.cli.ptz (ptz-cli)**
   - ONVIF PTZ 物理制御と安全クランプを備えた筋肉CLI。
 - **pico.cli.memory (memory-cli)**
-  - SQLite FTS5 Trigramによる日本語想起とOKF形式書き込みを行う記憶CLI。
+  - SQLite FTS5 Trigramによる日本語想起、OKF形式書き込み、および WikiLinks `[[...]]`・バックリンク自動形成によるナレッジグラフ対応記憶CLI。
 - **pico.cli.perception (perception-cli)**
   - YOLO検出テキスト出力とオンデマンドVLM画像クロップ解釈を行う感覚CLI。
 
