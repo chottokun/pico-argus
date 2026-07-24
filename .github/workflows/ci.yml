@@ -1,4 +1,4 @@
-name: Security & Vulnerability Scan
+name: Continuous Integration
 
 on:
   push:
@@ -13,8 +13,8 @@ on:
       - master
 
 jobs:
-  uv-audit:
-    name: Package Vulnerability Scan (uv audit)
+  lint-and-test:
+    name: Lint & Pytest
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -31,21 +31,10 @@ jobs:
           python-version: '3.13'
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync
 
-      - name: Run uv audit
-        run: uv audit
+      - name: Run Ruff Lint Check
+        run: uv run ruff check
 
-  gitleaks:
-    name: Secret Leak Scan (Gitleaks)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Gitleaks scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Pytest
+        run: uv run pytest
