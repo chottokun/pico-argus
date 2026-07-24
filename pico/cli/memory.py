@@ -1,6 +1,7 @@
 import argparse
 import os
 import json
+from typing import Optional, List
 from pico.memory import MemoryStore
 
 class SQLiteMemoryCLI:
@@ -22,7 +23,9 @@ class SQLiteMemoryCLI:
                 "tags": r["tags"],
                 "content": r["content"],
                 "score": r["score"],
-                "provenance": r["provenance"]
+                "provenance": r["provenance"],
+                "backlinks": r.get("backlinks", []),
+                "forward_links": r.get("forward_links", [])
             })
         return output
 
@@ -31,7 +34,7 @@ class SQLiteMemoryCLI:
         output = self.search_knowledge_data(query, limit)
         print(json.dumps({"results": output}, indent=2, ensure_ascii=False))
 
-    def write_knowledge_data(self, filepath: str, title: str, content: str, tags: str = "") -> dict:
+    def write_knowledge_data(self, filepath: str, title: str, content: str, tags: str = "", aliases: Optional[List[str]] = None) -> dict:
         """新しい記憶を OKF 形式 Markdown に書き込みインデックスを更新して結果を辞書で返却"""
         # OKF Frontmatter を付与したコンテンツの構築
         from datetime import datetime
@@ -45,6 +48,8 @@ class SQLiteMemoryCLI:
             except Exception:
                 pass
 
+        alias_str = ", ".join(aliases) if aliases else ""
+
         if existing_content:
             parts = existing_content.split("---\n")
             if len(parts) >= 3:
@@ -55,10 +60,12 @@ class SQLiteMemoryCLI:
             else:
                 okf_content = existing_content.strip() + f"\n\n---\n### 🕒 観測記録: {timestamp_str}\n{content}"
         else:
+            aliases_fm = f"aliases: [{alias_str}]\n" if alias_str else ""
             okf_content = (
                 f"---\n"
                 f"title: {title}\n"
                 f"tags: {tags}\n"
+                f"{aliases_fm}"
                 f"doc_type: knowledge\n"
                 f"provenance_source: CLI memory write\n"
                 f"provenance_confidence: High\n"
@@ -78,7 +85,8 @@ class SQLiteMemoryCLI:
             doc_type="knowledge",
             title=title,
             tags=tags,
-            content=okf_content
+            content=okf_content,
+            aliases=aliases
         )
         return {"status": "success", "filepath": filepath}
 
