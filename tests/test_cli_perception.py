@@ -25,7 +25,7 @@ def test_get_tracks(mock_monitor, mock_vlm_class, mock_detector_class, mock_read
     # Setup
     mock_reader = MagicMock()
     mock_reader_class.return_value = mock_reader
-    mock_reader.get_last_frame_time.return_value = time.monotonic()
+    mock_reader.get_last_frame_time.side_effect = lambda: time.monotonic()
     
     # 640x480のフレームを返す
     dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -64,7 +64,7 @@ def test_analyze_crop_clamping(mock_resize, mock_monitor, mock_vlm_class, mock_d
     # Setup
     mock_reader = MagicMock()
     mock_reader_class.return_value = mock_reader
-    mock_reader.get_last_frame_time.return_value = time.monotonic()
+    mock_reader.get_last_frame_time.side_effect = lambda: time.monotonic()
     
     # 大きなダミー画像 1500x1500
     dummy_frame = np.zeros((1500, 1500, 3), dtype=np.uint8)
