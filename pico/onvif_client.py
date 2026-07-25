@@ -109,8 +109,8 @@ class PTZController:
                     request.Translation = {'PanTilt': {'x': dx, 'y': dy}}
                     self.ptz.RelativeMove(request)
 
-                    # 物理駆動ラグ待機 (0.08s へ高速化)
-                    time.sleep(0.08 if video_reader is not None else 0.08)
+                    # 物理駆動ラグ待機 (物理モーターが確実に回転する0.15秒に設定)
+                    time.sleep(0.15)
 
                     # モニター表示 & キーキャンセル監視
                     if video_reader is not None:
@@ -157,13 +157,7 @@ class PTZController:
                 logger.warning("Home Alignment was manually bypassed/interrupted. Current position established as (0.0, 0.0).")
             else:
                 logger.info("Home Alignment completed successfully. Origin established.")
-            
-            # アライメントウィンドウのクリーンアップ
-            if video_reader is not None:
-                try:
-                    cv2.destroyWindow("Cognitive Surveillance Monitor")
-                except Exception:
-                    pass
+            # ウィンドウ破棄は行わず、MonitorWindowスレッドと同一ウィンドウを単一維持する
         except Exception as e:
             logger.error(f"Failed to perform Home Alignment: {e}")
 
