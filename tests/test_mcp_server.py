@@ -123,8 +123,7 @@ async def test_call_set_tracking_target_class_filter(mock_get_shared_reader, moc
     # Assert
     assert len(res) == 1
     assert "person" in res[0].text
-    mock_ptz.stop_lockon.assert_called_once()
-    mock_ptz.emergency_stop.assert_called_once()
+    mock_ptz.start_lockon.assert_called_with(track_id=None, class_filter="person")
 
 @pytest.mark.anyio
 @patch("pico.mcp.server.get_perception")

@@ -67,6 +67,10 @@ def get_perception():
     global perception
     if perception is None:
         perception = OnDemandPerceptionCLI(get_config(), shared_reader=get_shared_reader())
+        ptz_inst = get_ptz()
+        perception.set_ptz_actuator(ptz_inst)
+        # デフォルト追尾ターゲットとして "person" (人) を自動セット
+        ptz_inst.start_lockon(class_filter="person")
     return perception
 
 def get_yolo_semaphore():
@@ -250,26 +254,16 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             class_filter = arguments.get("class_filter")
             
             active_ptz = get_ptz()
-            
-            # すでに実行中の追従タスクがあればキャンセル
-            if lockon_task and not lockon_task.done():
-                lockon_task.cancel()
-                try:
-                    await lockon_task
-                except asyncio.CancelledError:
-                    pass
-                lockon_task = None
-                
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, active_ptz.stop_lockon)
-            await loop.run_in_executor(None, active_ptz.emergency_stop)
+            _ = get_perception()  # 知覚エンジンとの連携確保
 
             if track_id is not None or class_filter is not None:
-                lockon_task = asyncio.create_task(_run_lockon_loop(track_id, class_filter))
+                active_ptz.start_lockon(track_id=track_id, class_filter=class_filter)
                 target_desc = f"ID: {track_id}" if track_id is not None else f"Class: '{class_filter}'"
-                return [types.TextContent(type="text", text=f"Success: 追跡ターゲットを {target_desc} に設定し、自律自動追尾を開始しました。")]
+                return [types.TextContent(type="text", text=f"Success: 追跡ターゲットを {target_desc} に設定・変更し、自律自動追尾を開始しました。")]
             else:
-                return [types.TextContent(type="text", text="Success: 追跡ターゲットを解除しました。")]
+                # 引数なしで解除指示があった場合はデフォルトの "person" (人) 追尾に復帰
+                active_ptz.start_lockon(class_filter="person")
+                return [types.TextContent(type="text", text="Success: 追跡ターゲットをデフォルトの 'person' (人) にリセットしました。")]
 
         elif name == "get_live_snapshot":
             loop = asyncio.get_running_loop()
