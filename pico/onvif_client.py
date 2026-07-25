@@ -21,6 +21,8 @@ class PTZController:
         invert_tilt: bool = False,
         step_size_x: float = 0.15,
         step_size_y: float = 0.10,
+        total_steps_x: int = 15,
+        total_steps_y: int = 20,
         return_steps_x: Optional[int] = None,
         return_steps_y: Optional[int] = None,
         hunt_steps_x: int = 25,
@@ -38,8 +40,10 @@ class PTZController:
         self.invert_tilt: bool = invert_tilt
         self.step_size_x: float = step_size_x
         self.step_size_y: float = step_size_y
-        self.return_steps_x: int = return_steps_x if return_steps_x is not None else int(round(max_limit_x / step_size_x))
-        self.return_steps_y: int = return_steps_y if return_steps_y is not None else int(round(max_limit_y / step_size_y))
+        self.total_steps_x: int = total_steps_x
+        self.total_steps_y: int = total_steps_y
+        self.return_steps_x: int = return_steps_x if return_steps_x is not None else (total_steps_x // 2 + 1 if total_steps_x % 2 != 0 else total_steps_x // 2)
+        self.return_steps_y: int = return_steps_y if return_steps_y is not None else total_steps_y // 2
         self.hunt_steps_x: int = hunt_steps_x
         self.hunt_steps_y: int = hunt_steps_y
         
@@ -136,29 +140,29 @@ class PTZController:
                     else:
                         logger.info(f"Alignment [{phase_name}]: {i+1}/{total_steps}")
 
-            # camera_config.json の MAX_LIMIT_X / MAX_LIMIT_Y から中心→端、および端→端（全幅・全高）の正確なステップ数を計算
-            steps_to_edge_x = int(round(self.max_limit_x / step_size_x))
-            steps_to_edge_y = int(round(self.max_limit_y / step_size_y))
-            full_sweep_x = steps_to_edge_x * 2 + 2
-            full_sweep_y = steps_to_edge_y * 2 + 2
-            hunt_steps_x = max(20, full_sweep_x + 5)
-            hunt_steps_y = max(20, full_sweep_y + 5)
+            # camera_config.json の実測データ (TOTAL_STEPS_X: 15, TOTAL_STEPS_Y: 20) を直接活用
+            total_sweep_x = getattr(self, "total_steps_x", 15)
+            total_sweep_y = getattr(self, "total_steps_y", 20)
+            steps_to_center_x = getattr(self, "return_steps_x", total_sweep_x // 2)
+            steps_to_center_y = getattr(self, "return_steps_y", total_sweep_y // 2)
+            hunt_steps_x = max(20, total_sweep_x + 5)
+            hunt_steps_y = max(20, total_sweep_y + 5)
 
             logger.info(f"Configuration limits from camera_config.json: MAX_LIMIT_X=±{self.max_limit_x:.2f}, MAX_LIMIT_Y=±{self.max_limit_y:.2f}")
-            logger.info(f"Calculated steps: Center-to-Edge (X={steps_to_edge_x}, Y={steps_to_edge_y}) | Full Sweep (X={full_sweep_x}, Y={full_sweep_y})")
+            logger.info(f"Calibrated Steps: Full Sweep (X={total_sweep_x}, Y={total_sweep_y}) | Center Return (X={steps_to_center_x}, Y={steps_to_center_y})")
 
             # ----------------------------------------------------
-            # camera_config.json の MAX_LIMIT に基づく全幅・全高ダイナミックスキャン
+            # camera_config.json のキャリブレーション実測データに基づく完全アライメント
             # ----------------------------------------------------
             # 1. 物理左端へ完全突き当て
             logger.info(f"PHASE 1: Hunting LEFT physical edge ({hunt_steps_x} steps)...")
             execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Hunting LEFT edge")
             time.sleep(0.4)
 
-            # 2. 左端から右端までの【全幅 1.92】(full_sweep_x) を全域ダイナミックスキャン！
+            # 2. 左端から右端までの【実測全幅 15歩】(total_sweep_x) を完全フルスキャン！
             if not interrupted:
-                logger.info(f"PHASE 2: Full Sweep RIGHT ({self.max_limit_x * 2:.2f} range, {full_sweep_x} steps)...")
-                execute_blind_move(step_size_x, 0.0, full_sweep_x, "Full Sweep RIGHT")
+                logger.info(f"PHASE 2: Full Sweep RIGHT to opposite edge ({total_sweep_x} steps)...")
+                execute_blind_move(step_size_x, 0.0, total_sweep_x, "Full Sweep RIGHT")
                 time.sleep(0.4)
 
             # 3. 物理下端へ完全突き当て
@@ -167,10 +171,10 @@ class PTZController:
                 execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
                 time.sleep(0.4)
 
-            # 4. 下端から上端までの【全高 1.70】(full_sweep_y) を全域ダイナミックスキャン！
+            # 4. 下端から上端までの【実測全高 20歩】(total_sweep_y) を完全フルスキャン！
             if not interrupted:
-                logger.info(f"PHASE 4: Full Sweep UP ({self.max_limit_y * 2:.2f} range, {full_sweep_y} steps)...")
-                execute_blind_move(0.0, step_size_y, full_sweep_y, "Full Sweep UP")
+                logger.info(f"PHASE 4: Full Sweep UP to opposite edge ({total_sweep_y} steps)...")
+                execute_blind_move(0.0, step_size_y, total_sweep_y, "Full Sweep UP")
                 time.sleep(0.4)
 
             # 5. バックラッシュ(ギア遊び)を完全相殺するため、左下物理基準点へ突き当て
@@ -181,12 +185,12 @@ class PTZController:
                 execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Resetting BOTTOM for Backlash cancel")
                 time.sleep(0.5)
 
-            # 6. 左下物理基準点から、camera_config.json の MAX_LIMIT (X=+0.96, Y=+0.85) 分だけ正確に復帰して【真の中心原点】へ着地！
+            # 6. 左下物理基準点から、実測全幅・全高のぴったり半分 (X=7歩, Y=10歩) だけ復帰して【真の中心原点】へ着地！
             if not interrupted:
-                logger.info(f"PHASE 6: Returning to EXACT CENTER from corner (X={steps_to_edge_x} steps RIGHT, Y={steps_to_edge_y} steps UP)...")
-                execute_blind_move(step_size_x, 0.0, steps_to_edge_x, "Returning RIGHT to Center X")
+                logger.info(f"PHASE 6: Returning to EXACT CENTER from corner (X={steps_to_center_x} steps RIGHT, Y={steps_to_center_y} steps UP)...")
+                execute_blind_move(step_size_x, 0.0, steps_to_center_x, "Returning RIGHT to Center X")
                 time.sleep(0.3)
-                execute_blind_move(0.0, step_size_y, steps_to_edge_y, "Returning UP to Center Y")
+                execute_blind_move(0.0, step_size_y, steps_to_center_y, "Returning UP to Center Y")
                 time.sleep(0.4)
 
             self.current_x = 0.0

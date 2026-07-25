@@ -52,6 +52,8 @@ class PTZActuator:
                 invert_tilt=self.config.invert_tilt,
                 step_size_x=getattr(self.config, "step_size_x", 0.15),
                 step_size_y=getattr(self.config, "step_size_y", 0.10),
+                total_steps_x=getattr(self.config, "total_steps_x", 15),
+                total_steps_y=getattr(self.config, "total_steps_y", 20),
                 return_steps_x=getattr(self.config, "return_steps_x", None),
                 return_steps_y=getattr(self.config, "return_steps_y", None),
                 hunt_steps_x=getattr(self.config, "hunt_steps_x", 25),

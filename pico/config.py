@@ -85,8 +85,10 @@ class AppConfig:
                     self.invert_tilt = data.get("INVERT_TILT", False)
                     self.step_size_x = data.get("STEP_SIZE_X", 0.15)
                     self.step_size_y = data.get("STEP_SIZE_Y", 0.10)
-                    self.return_steps_x = data.get("RETURN_STEPS_X", int(round(self.max_limit_x / self.step_size_x)))
-                    self.return_steps_y = data.get("RETURN_STEPS_Y", int(round(self.max_limit_y / self.step_size_y)))
+                    self.total_steps_x = data.get("TOTAL_STEPS_X", 15)
+                    self.total_steps_y = data.get("TOTAL_STEPS_Y", 20)
+                    self.return_steps_x = data.get("RETURN_STEPS_X", self.total_steps_x // 2)
+                    self.return_steps_y = data.get("RETURN_STEPS_Y", self.total_steps_y // 2)
                     self.hunt_steps_x = data.get("HUNT_STEPS_X", 25)
                     self.hunt_steps_y = data.get("HUNT_STEPS_Y", 25)
                     logger.info(

@@ -41,6 +41,8 @@ def test_send_pulse_move(mock_ptz_class, mock_config):
         invert_tilt=False,
         step_size_x=0.15,
         step_size_y=0.10,
+        total_steps_x=15,
+        total_steps_y=20,
         return_steps_x=None,
         return_steps_y=None,
         hunt_steps_x=25,

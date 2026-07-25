@@ -178,6 +178,8 @@ config_data = {
     "INVERT_TILT": config.invert_tilt,
     "STEP_SIZE_X": STEP_SIZE_X,
     "STEP_SIZE_Y": STEP_SIZE_Y,
+    "TOTAL_STEPS_X": total_steps_x,
+    "TOTAL_STEPS_Y": total_steps_y,
     "RETURN_STEPS_X": center_steps_x,
     "RETURN_STEPS_Y": center_steps_y,
     "CALIBRATED_AT": time.strftime("%Y-%m-%d %H:%M:%S")
