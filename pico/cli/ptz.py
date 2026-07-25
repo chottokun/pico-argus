@@ -73,6 +73,15 @@ class PTZActuator:
         self.lockon_class_name = None
         logger.info("PTZ lockon stop requested.")
 
+    def start_lockon(self, track_id: int | None = None, class_filter: str | None = None):
+        """常時知覚エンジンと連携して、指定ターゲットの自動物理ロックオン追尾を開始する"""
+        if track_id is None and class_filter is None:
+            raise ValueError("Either track_id or class_filter must be provided for lockon.")
+        self.lockon_active = True
+        self.lockon_target_id = track_id
+        self.lockon_class_name = class_filter
+        logger.info(f"🎯 PTZ Lockon Activated. Target ID: {track_id}, Class: {class_filter}")
+
     def lockon(self, reader, track_id: int | None = None, class_filter: str | None = None):
         """指定のトラックID、または特定のオブジェクトクラス（曖昧指定）に対してリアルタイムPID追従ループを実行する"""
         if track_id is None and class_filter is None:

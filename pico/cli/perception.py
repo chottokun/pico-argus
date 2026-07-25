@@ -102,11 +102,8 @@ class ContinuousPerceptionLoop:
             detections = self.detector.detect(frame)
             sane = [d for d in detections if self.guard.is_bbox_sane(d.bbox, frame.shape)]
             
-            # active_tracker の参照（PTZ追尾中であればPTZのトラッカー、無ければ自前のトラッカー）
+            # active_tracker の参照
             active_tracker = self.tracker
-            if self.ptz_actuator and getattr(self.ptz_actuator, "active_tracker", None) is not None:
-                active_tracker = self.ptz_actuator.active_tracker
-                
             tracked = active_tracker.update(sane)
 
             # トラックリストメタデータの構築
@@ -120,6 +117,48 @@ class ContinuousPerceptionLoop:
                     "bbox": list(t.bbox),
                     "confidence": round(t.confidence, 2)
                 })
+
+            # PTZ自動ロックオン物理追従サーボ制御
+            if self.ptz_actuator and getattr(self.ptz_actuator, "lockon_active", False):
+                try:
+                    self.ptz_actuator._init_ptz(video_reader=self.reader, align=self.ptz_actuator.config.align_to_home)
+                    target_obj = None
+                    target_id = self.ptz_actuator.lockon_target_id
+                    target_class = self.ptz_actuator.lockon_class_name
+
+                    if target_id is not None:
+                        target_obj = next((t for t in tracked if t.track_id == target_id), None)
+                    elif target_class is not None:
+                        candidates = [t for t in tracked if getattr(t, "class_name", "") == target_class]
+                        if candidates:
+                            best = max(candidates, key=lambda x: x.confidence)
+                            self.ptz_actuator.lockon_target_id = best.track_id
+                            target_obj = best
+                            logger.info(f"🎯 Auto-Relocked onto '{target_class}' (ID: {best.track_id})")
+
+                    if target_obj is not None:
+                        curr_time = time.monotonic()
+                        if not hasattr(self, "_last_ptz_move_time"):
+                            self._last_ptz_move_time = curr_time
+
+                        dt_move = curr_time - self._last_ptz_move_time
+                        if dt_move > 0.35:
+                            x, y, w, h = target_obj.bbox
+                            cx = (x + w / 2.0) / frame.shape[1]
+                            cy = (y + h / 2.0) / frame.shape[0]
+
+                            dx, dy = self.ptz_actuator.pid.calculate_step(cx, 1.0 - cy, dt_move)
+                            if dx != 0.0 or dy != 0.0:
+                                self.ptz_actuator.ptz.safe_move(dx, dy)
+                                logger.info(f"🎯 [PTZ TRACKING MOVE] Track {target_obj.track_id} ({getattr(target_obj, 'class_name', '')}) -> Move Pan={dx:.3f}, Tilt={dy:.3f}")
+                            self._last_ptz_move_time = curr_time
+                    else:
+                        if target_class is not None and target_id is not None:
+                            logger.warning(f"🎯 Target ID {target_id} lost. Auto-relocking for '{target_class}'...")
+                            self.ptz_actuator.lockon_target_id = None
+                        self.ptz_actuator.pid.reset()
+                except Exception as e:
+                    logger.error(f"Error in PTZ tracking move: {e}")
 
             # 能動的イベントエンジンの処理
             emitted_events = self.event_engine.process_frame(tracked)
