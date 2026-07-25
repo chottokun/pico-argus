@@ -36,7 +36,9 @@ class PTZActuator:
         self.lockon_class_name = None
         self.active_tracker = None
 
-    def _init_ptz(self, video_reader=None, align=False):
+    def _init_ptz(self, video_reader=None, align: bool | None = None):
+        if align is None:
+            align = getattr(self.config, "align_to_home", True)
         if self.ptz is None:
             self.ptz = PTZController(
                 ip=self.config.tapo_ip,

@@ -16,6 +16,10 @@ def main():
     ptz = PTZActuator(config)
     cli.set_ptz_actuator(ptz)
 
+    if config.align_to_home:
+        logger.info("🎯 起動時カメラ物理アライメント（原点校正・中心復帰）を実行しています...")
+        ptz._init_ptz(video_reader=cli.reader, align=True)
+
     logger.info("📺 モニターウィンドウ (Cognitive Surveillance Monitor) を起動しました。")
     logger.info("🎯 人物 (class_filter='person') に対する自動物理PTZロックオン追尾を開始します。")
 
