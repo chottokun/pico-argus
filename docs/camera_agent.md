@@ -169,3 +169,39 @@ class AgentState(TypedDict):
    - 状況把握や動作確認を行う際は、まず `get_active_tracks` を呼び出してYOLO/ByteTrackが検出したオブジェクトのテキストメタデータ（ID、クラス、座標）を把握する。
    - 次に、詳細な視覚情報を得るために、必ず `analyze_crop_image` に `track_id` や `class_filter` を指定して、プログラム経由でVLM（Ollama）に解析を行わせる。
    - 特定のオブジェクトがない場合（画像全体の状況を知りたい場合）も、`analyze_crop_image` の `track_id` と `class_filter` を両方省略し、`query`（例: "画像全体の様子を詳しく教えてください"）のみを指定して実行することで、VLM経由で画像全体の状況を把握しなければならない。
+
+---
+
+## 9. 物理カメラ運動方向とONVIF相対移動の符号・極性反転ガイド (Physical Motion Dynamics & Orientation Note)
+
+物理カメラ（Tapo C210 等）の自動追尾において、画面座標系とONVIF物理相対移動（RelativeMove）の運動極性を誤ると、**物体が画面右に移動した際にカメラが左に逃げてしまう負のフィードバック（逆駆動現象）**が発生します。これを防ぐための標準物理仕様と座標系定義を以下に定めます。
+
+### ① 画面正規化座標系 (Screen Coordinates)
+- 画面左上: `(0.0, 0.0)` 、画面右下: `(1.0, 1.0)` 、画面中央: `(0.5, 0.5)`
+- オブジェクト中心座標:
+  $$cx = \frac{x + w / 2}{\text{frame\_width}}, \quad cy = \frac{y + h / 2}{\text{frame\_height}}$$
+- 画面中央からの位置偏差:
+  $$\text{error}_x = cx - 0.5, \quad \text{error}_y = cy - 0.5$$
+
+### ② 正フィードバック制御の幾何学的運動定義
+- **Pan (水平移動)**: オブジェクトが画面の**右側**にいる場合 ($cx > 0.5$)、対象を中央に捉えるためカメラを**右（Pan > 0）**に旋回させる。
+- **Tilt (垂直移動)**: オブジェクトが画面の**下側**にいる場合 ($cy > 0.5$)、対象を中央に捉えるためカメラを**下（Tilt < 0）**へ倒す。
+
+### ③ `tapo_config.json` における極性設定ノウハウ
+Tapo C210 カメラをデスク・台座の上に**正立設置（通常配置）**して使用する場合、ONVIF RelativeMove コマンドの内部回転軸と正フィードバックを合致させるため、`tapo_config.json` を以下のように設定することが**絶対必須**です。
+
+```json
+{
+    "MAX_LIMIT_X": 0.96,
+    "MAX_LIMIT_Y": 0.89,
+    "INVERT_PAN": true,
+    "INVERT_TILT": true,
+    "CALIBRATED_AT": "2026-07-25 08:12:58"
+}
+```
+
+> [!IMPORTANT]
+> **設置環境による極性設定ルール:**
+> - **デスク・台座への正立設置 (標準)**: `"INVERT_PAN": true`, `"INVERT_TILT": true`
+> - **天井吊り下げ (逆さ設置)**: `"INVERT_PAN": false`, `"INVERT_TILT": false`
+> - **PIDコントローラー呼び出しコード基準**: `pid.calculate_step(cx, cy, dt)` に正規化座標 `(cx, cy)` を直接渡し、Y軸の二重反転（`1.0 - cy` など）を行ってはならない。

@@ -133,11 +133,16 @@ uv run python calibrate_tapo.py
 設定ファイル (`tapo_config.json`):
 ```json
 {
-    "MAX_LIMIT_X": 0.89,
+    "MAX_LIMIT_X": 0.96,
     "MAX_LIMIT_Y": 0.89,
-    "CALIBRATED_AT": "2026-07-25 08:08:47"
+    "INVERT_PAN": true,
+    "INVERT_TILT": true,
+    "CALIBRATED_AT": "2026-07-25 08:12:58"
 }
 ```
+
+> ⚠️ **運動極性の注意点 (Physical Dynamics Note):**
+> 正立設置（通常配置）の Tapo C210 カメラでは、画面右側の物体を画面中央へ向かってカメラを右旋回させるために `"INVERT_PAN": true`, `"INVERT_TILT": true` の設定が必要です（天井吊り下げ設置の場合は `false` に変更）。詳細は [docs/camera_agent.md](file:///e:/Python%20Scripts/Pico/docs/camera_agent.md) の第9章を参照してください。
 
 ---
 
