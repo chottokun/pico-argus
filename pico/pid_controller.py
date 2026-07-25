@@ -68,10 +68,9 @@ class AdaptivePIDController:
             if dt <= 0.001:
                 dt = 0.2  # デフォルトのタイムステップにフォールバック
 
-            # 2. VOR規範型の比例ゲインKp非線形指数適応
-            # 偏差が小さい時はゲインを落とし、画面端に近づくほど基本感度Kp_baseまで急激に高める
+            # 2. VOR規範型の比例ゲインKp非線形指数適応 (チルト軸Yは物理重力抵抗のため1.8倍ブースト)
             kp_x = self.kp_base * (1.0 - np.exp(-self.alpha * abs(error_x)))
-            kp_y = self.kp_base * (1.0 - np.exp(-self.alpha * abs(error_y)))
+            kp_y = self.kp_base * 1.8 * (1.0 - np.exp(-self.alpha * abs(error_y)))
 
             # 3. 積分項（累積誤差）の加算とアンチワインドアップ（クランプ）
             self.integral_x += error_x * dt
@@ -89,11 +88,12 @@ class AdaptivePIDController:
             dy = (kp_y * error_y) + (self.ki * self.integral_y) + (self.kd * diff_y)
 
             # 6. 静止摩擦突破（Minimum Speed Boost）処理
-            # 出力絶対値が微小で0でない場合、モーターが動き出せる最小値(min_speed)へ押し上げる
+            # 出力絶対値が微小で0でない場合、モーターが動き出せる最小値へ押し上げる
+            min_speed_y = self.min_speed * 1.5
             if 0.0 < abs(dx) < self.min_speed:
                 dx = np.sign(dx) * self.min_speed
-            if 0.0 < abs(dy) < self.min_speed:
-                dy = np.sign(dy) * self.min_speed
+            if 0.0 < abs(dy) < min_speed_y:
+                dy = np.sign(dy) * min_speed_y
 
             # 7. 最大ステップ幅制限（クリッピング）
             dx = max(-self.max_step, min(self.max_step, dx))
