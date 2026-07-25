@@ -111,8 +111,9 @@ class PTZController:
 
                     # 物理カメラの運動極性(invert_pan / invert_tilt)を反映してコマンド生成
                     # Raw ONVIF仕様 (invert_pan: True): dx < 0 (物理左) -> Raw ONVIF +0.15, dx > 0 (物理右) -> Raw ONVIF -0.15
+                    # Raw ONVIF仕様 (invert_tilt: True): dy < 0 (物理下) -> Raw ONVIF -0.10, dy > 0 (物理上) -> Raw ONVIF +0.10
                     cmd_x = -dx if self.invert_pan else dx
-                    cmd_y = -dy if self.invert_tilt else dy
+                    cmd_y = dy if self.invert_tilt else -dy
 
                     # コマンド送信
                     request = self.ptz.create_type('RelativeMove')
