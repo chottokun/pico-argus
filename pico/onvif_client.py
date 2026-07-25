@@ -103,14 +103,18 @@ class PTZController:
                     if interrupted:
                         break
 
+                    # 物理カメラの運動極性(invert_pan / invert_tilt)を反映してコマンド生成
+                    cmd_x = -dx if self.invert_pan else dx
+                    cmd_y = -dy if self.invert_tilt else dy
+
                     # コマンド送信
                     request = self.ptz.create_type('RelativeMove')
                     request.ProfileToken = self.profile_token
-                    request.Translation = {'PanTilt': {'x': dx, 'y': dy}}
+                    request.Translation = {'PanTilt': {'x': cmd_x, 'y': cmd_y}}
                     self.ptz.RelativeMove(request)
 
-                    # 物理駆動ラグ待機 (物理モーターが確実に回転する0.15秒に設定)
-                    time.sleep(0.15)
+                    # 物理駆動ラグ待機 (安定動作速度 0.18秒)
+                    time.sleep(0.18)
 
                     # モニター表示 & キーキャンセル監視
                     if video_reader is not None:
