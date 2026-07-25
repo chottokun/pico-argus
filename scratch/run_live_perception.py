@@ -4,7 +4,24 @@ from pico.config import AppConfig
 from pico.cli.perception import OnDemandPerceptionCLI
 from pico.cli.ptz import PTZActuator
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+import os
+
+os.makedirs("logs", exist_ok=True)
+log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# コンソールハンドラー
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+root_logger.addHandler(console_handler)
+
+# ファイルハンドラー (logs/perception_live.log へ常時書き込み)
+file_handler = logging.FileHandler("logs/perception_live.log", mode="w", encoding="utf-8")
+file_handler.setFormatter(log_formatter)
+root_logger.addHandler(file_handler)
+
 logger = logging.getLogger("LiveServerRunner")
 
 def main():
@@ -39,11 +56,15 @@ def main():
             logger.info(f"⏱️ 稼働中 [{count*2}s経過] | LOCKON: {lockon_info} | FPS: {status['fps']} | 検出数: {len(tracks)}{evt_summary}")
 
     except KeyboardInterrupt:
-        logger.info("👋 ユーザー操作により停止シグナルを受信しました。")
+        logger.info("👋 ユーザー操作 (Ctrl+C) により停止シグナルを受信しました。")
     finally:
-        ptz.stop_lockon()
-        cli.close()
+        try:
+            ptz.stop_lockon()
+            cli.close()
+        except Exception:
+            pass
         logger.info("🛑 常時知覚サーバーおよびPTZ追尾を安全に停止しました。")
+        os._exit(0)
 
 if __name__ == "__main__":
     main()
