@@ -119,7 +119,7 @@ class PTZController:
                             disp = frame.copy()
                             cv2.putText(disp, f"ALIGN: {phase_name} ({i+1}/{total_steps})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                             cv2.putText(disp, "Press [c] or [ESC] to Skip", (30, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                            cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", disp)
+                            cv2.imshow("Cognitive Surveillance Monitor", disp)
                             
                             key = cv2.waitKey(1) & 0xFF
                             if key in (ord('c'), 27):
@@ -161,7 +161,7 @@ class PTZController:
             # アライメントウィンドウのクリーンアップ
             if video_reader is not None:
                 try:
-                    cv2.destroyWindow("Tapo ONVIF YOLOv8 Experiment System")
+                    cv2.destroyWindow("Cognitive Surveillance Monitor")
                 except Exception:
                     pass
         except Exception as e:
