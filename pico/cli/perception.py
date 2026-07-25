@@ -275,16 +275,18 @@ class MonitorWindow:
 
         while self.running:
             frame = self.perception_loop.get_latest_frame()
-            if frame is None:
-                time.sleep(0.03)
-                continue
+            if frame is not None:
+                cv2.imshow("Cognitive Surveillance Monitor", frame)
 
-            cv2.imshow("Cognitive Surveillance Monitor", frame)
-            key = cv2.waitKey(30) & 0xFF
+            # メッセージポンプを常に回すため、frame有無に関わらず確実に waitKey を呼び出す
+            key = cv2.waitKey(10) & 0xFF
             if key == 27:
                 break
 
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyWindow("Cognitive Surveillance Monitor")
+        except Exception:
+            pass
         logger.info("📺 OpenCV Monitor window thread stopped.")
 
 
