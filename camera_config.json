@@ -6,8 +6,6 @@
     "STEP_SIZE_X": 0.15,
     "STEP_SIZE_Y": 0.10,
     "RETURN_STEPS_X": 7,
-    "RETURN_STEPS_Y": 9,
-    "HUNT_STEPS_X": 25,
-    "HUNT_STEPS_Y": 25,
-    "CALIBRATED_AT": "2026-07-25 13:35:23"
+    "RETURN_STEPS_Y": 10,
+    "CALIBRATED_AT": "2026-07-25 15:07:20"
 }

@@ -176,6 +176,10 @@ config_data = {
     "MAX_LIMIT_Y": calculated_limit_y,
     "INVERT_PAN": config.invert_pan,
     "INVERT_TILT": config.invert_tilt,
+    "STEP_SIZE_X": STEP_SIZE_X,
+    "STEP_SIZE_Y": STEP_SIZE_Y,
+    "RETURN_STEPS_X": center_steps_x,
+    "RETURN_STEPS_Y": center_steps_y,
     "CALIBRATED_AT": time.strftime("%Y-%m-%d %H:%M:%S")
 }
 
