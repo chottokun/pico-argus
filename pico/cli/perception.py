@@ -267,6 +267,8 @@ class OnDemandPerceptionCLI:
         self.perception_loop = ContinuousPerceptionLoop(reader=self.reader, model_path=model_path)
         self.perception_loop.start()
         self.monitor: Optional[MonitorWindow] = None
+        if getattr(self.config, "show_monitor", False) is True:
+            self.start_monitor()
 
     @property
     def detector(self):

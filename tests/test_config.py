@@ -69,6 +69,28 @@ def test_app_config_supports_env_override(monkeypatch) -> None:
         assert config.max_limit_x == 1.0
         assert config.max_limit_y == 0.5
 
+def test_app_config_show_monitor_option(monkeypatch) -> None:
+    monkeypatch.setenv("TAPO_USER", "test_user")
+    monkeypatch.setenv("TAPO_PASS", "test_pass")
+    monkeypatch.setenv("TAPO_IP", "192.168.1.100")
+
+    with patch("pico.config.load_dotenv"):
+        # 未指定の場合のデフォルト (False)
+        monkeypatch.delenv("SHOW_MONITOR", raising=False)
+        monkeypatch.delenv("TAPO_SHOW_MONITOR", raising=False)
+        config1 = AppConfig()
+        assert config1.show_monitor is False
+
+        # SHOW_MONITOR=true
+        monkeypatch.setenv("SHOW_MONITOR", "true")
+        config2 = AppConfig()
+        assert config2.show_monitor is True
+
+        # SHOW_MONITOR=1
+        monkeypatch.setenv("SHOW_MONITOR", "1")
+        config3 = AppConfig()
+        assert config3.show_monitor is True
+
 
 def test_build_rtsp_url_uses_stream1_by_default() -> None:
     from pico.config import build_rtsp_url

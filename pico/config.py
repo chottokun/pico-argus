@@ -45,6 +45,10 @@ class AppConfig:
         align_env = os.getenv("TAPO_ALIGN_TO_HOME", "true").lower()
         self.align_to_home: bool = align_env not in ("false", "no", "0")
 
+        # モニター表示設定 (デフォルト False、SHOW_MONITOR または TAPO_SHOW_MONITOR で指定)
+        show_env = os.getenv("SHOW_MONITOR", os.getenv("TAPO_SHOW_MONITOR", "false")).lower()
+        self.show_monitor: bool = show_env in ("true", "1", "yes")
+
         # キャリブレーション限界値と反転設定の読み込み
         self.max_limit_x: float = DEFAULT_MAX_LIMIT_X
         self.max_limit_y: float = DEFAULT_MAX_LIMIT_Y
