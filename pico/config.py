@@ -26,7 +26,7 @@ def build_rtsp_url(user: str, password: str, host: str, stream: str = DEFAULT_ST
 class AppConfig:
     """アプリケーション全体の設定およびカメラの可動限界情報を一元管理するクラス。"""
 
-    def __init__(self, env_path: str | None = None, config_path: str = "tapo_config.json") -> None:
+    def __init__(self, env_path: str | None = None, config_path: str = "camera_config.json") -> None:
         # .envファイルのロード
         load_dotenv(dotenv_path=env_path)
 
@@ -64,21 +64,25 @@ class AppConfig:
         return value
 
     def _load_calibration_config(self, config_path: str) -> None:
-        """キャリブレーション結果の JSON ファイルを読み込む。"""
-        if os.path.exists(config_path):
+        """キャリブレーション結果の JSON ファイル (camera_config.json / tapo_config.json) を読み込む。"""
+        target_path = config_path
+        if not os.path.exists(target_path) and os.path.exists("tapo_config.json"):
+            target_path = "tapo_config.json"
+
+        if os.path.exists(target_path):
             try:
-                with open(config_path, "r", encoding="utf-8") as f:
+                with open(target_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.max_limit_x = data.get("MAX_LIMIT_X", DEFAULT_MAX_LIMIT_X)
                     self.max_limit_y = data.get("MAX_LIMIT_Y", DEFAULT_MAX_LIMIT_Y)
                     self.invert_pan = data.get("INVERT_PAN", False)
                     self.invert_tilt = data.get("INVERT_TILT", False)
                     logger.info(
-                        f"Loaded calibration config from {config_path} - "
+                        f"Loaded calibration config from {target_path} - "
                         f"Limits X: ±{self.max_limit_x}, Y: ±{self.max_limit_y} | "
                         f"Invert Pan: {self.invert_pan}, Tilt: {self.invert_tilt}"
                     )
             except Exception as e:
                 logger.error(f"Failed to load calibration config: {e}. Using default values.")
         else:
-            logger.warning(f"Calibration config {config_path} not found. Using default values.")
+            logger.warning(f"Calibration config {target_path} not found. Using default values.")

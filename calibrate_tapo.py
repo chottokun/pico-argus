@@ -22,9 +22,8 @@ PIXEL_DIFF_THRESHOLD = 15  # 画素の差分しきい値 (0〜255)
 
 load_dotenv()
 try:
-    config = AppConfig(config_path="tapo_config_temp.json")  # キャリブ前の為、一時パス
+    config = AppConfig(config_path="camera_config.json")
 except Exception as e:
-    # 必須環境変数がない場合は例外が発生する
     print(f"❌ 設定読み込みエラー: {e}")
     raise SystemExit(1)
 
@@ -57,9 +56,13 @@ def move_and_check_survival(step_x, step_y, status_text):
         return False
     gray_before = cv2.cvtColor(frame_before, cv2.COLOR_BGR2GRAY)
     
+    # 物理カメラ極性を反転適用
+    cmd_x = -step_x if config.invert_pan else step_x
+    cmd_y = -step_y if config.invert_tilt else step_y
+
     request = ptz.create_type('RelativeMove')
     request.ProfileToken = profile_token
-    request.Translation = {'PanTilt': {'x': step_x, 'y': step_y}}
+    request.Translation = {'PanTilt': {'x': cmd_x, 'y': cmd_y}}
     ptz.RelativeMove(request)
     
     time.sleep(RTSP_LAG_TIMEOUT)
@@ -80,7 +83,7 @@ def move_and_check_survival(step_x, step_y, status_text):
         h, w = display_frame.shape[:2]
         color = (0, 255, 0) if has_moved else (0, 0, 255)
         
-        cv2.putText(display_frame, f"PHASE: {status_text}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(display_frame, f"CALIB: {status_text}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         cv2.putText(display_frame, f"Motion: {moved_ratio*100:.1f}% / Thresh: {MOTION_THRESHOLD}%", (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
         
         small_thresh = cv2.resize(cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR), (w // 4, h // 4))
@@ -132,7 +135,8 @@ print(f"\n🔄 計測完了（左右総幅: {total_steps_x}歩 / 上下総幅: {
 print("🔄 物理的な【真の中心原点】へカメラを移動しています...")
 
 for i in range(center_steps_x):
-    ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': -STEP_SIZE_X, 'y': 0.0}}})
+    cmd_x = STEP_SIZE_X if config.invert_pan else -STEP_SIZE_X
+    ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': cmd_x, 'y': 0.0}}})
     time.sleep(RTSP_LAG_TIMEOUT)
     
     if SHOW_PREVIEW:
@@ -144,7 +148,8 @@ for i in range(center_steps_x):
             cv2.waitKey(1)
 
 for i in range(center_steps_y):
-    ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': 0.0, 'y': -STEP_SIZE_Y}}})
+    cmd_y = STEP_SIZE_Y if config.invert_tilt else -STEP_SIZE_Y
+    ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': 0.0, 'y': cmd_y}}})
     time.sleep(RTSP_LAG_TIMEOUT)
     
     if SHOW_PREVIEW:
@@ -162,16 +167,18 @@ calculated_limit_y = round((total_steps_y / 2) * STEP_SIZE_Y * 0.85, 2)
 config_data = {
     "MAX_LIMIT_X": calculated_limit_x,
     "MAX_LIMIT_Y": calculated_limit_y,
+    "INVERT_PAN": config.invert_pan,
+    "INVERT_TILT": config.invert_tilt,
     "CALIBRATED_AT": time.strftime("%Y-%m-%d %H:%M:%S")
 }
 
-with open("tapo_config.json", "w", encoding="utf-8") as f:
+with open("camera_config.json", "w", encoding="utf-8") as f:
     json.dump(config_data, f, indent=4, ensure_ascii=False)
 
 print("\n✅ キャリブレーションが完全に完了しました！")
 print("🎯 カメラは物理的な可動域の【ド真ん中】で停止しています。")
 print(
-    f"💾 結果を 'tapo_config.json' に保存しました（左右限界: ±{calculated_limit_x}, 上下限界: ±{calculated_limit_y}）\n"
+    f"💾 結果を 'camera_config.json' に保存しました（左右限界: ±{calculated_limit_x}, 上下限界: ±{calculated_limit_y}）\n"
 )
 
 # 安全に解放

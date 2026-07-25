@@ -21,10 +21,10 @@ def test_app_config_loads_env_and_defaults(monkeypatch) -> None:
         "CALIBRATED_AT": "2026-07-20 12:00:00"
     })
 
-    # dotenv の探索に影響を与えないよう、tapo_config.json に対してのみ True を返すモック
+    # dotenv の探索に影響を与えないよう、camera_config.json / tapo_config.json に対してのみ True を返すモック
     original_exists = os.path.exists
     def mock_exists(path):
-        if "tapo_config.json" in str(path):
+        if "camera_config.json" in str(path) or "tapo_config.json" in str(path):
             return True
         return original_exists(path)
 
@@ -52,10 +52,10 @@ def test_app_config_supports_env_override(monkeypatch) -> None:
     monkeypatch.setenv("OLLAMA_MAX_RPM", "20")  # 上書き
     monkeypatch.setenv("TAPO_COGNITION_TARGET_RULE", "a person with red clothing")  # 上書き
 
-    # dotenvの探索に影響を与えないよう、tapo_config.jsonに対してのみFalseを返すモック
+    # dotenvの探索に影響を与えないよう、camera_config.json / tapo_config.json に対してのみFalseを返すモック
     original_exists = os.path.exists
     def mock_exists(path):
-        if "tapo_config.json" in str(path):
+        if "camera_config.json" in str(path) or "tapo_config.json" in str(path):
             return False
         return original_exists(path)
 
