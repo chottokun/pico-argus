@@ -144,26 +144,16 @@ class PTZController:
                 execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
                 time.sleep(0.6)
 
-            # 3. 左下端から、設定された精密な限界値(max_limit_x, max_limit_y)だけ「右・上」へ一括移動して真の中心(0.0, 0.0)へ復帰
+            # 3. 左下端から、設定された精密な限界ステップ数(max_steps_x, max_steps_y)だけ「右・上」へステップ分割移動して真の中心(0.0, 0.0)へ復帰
             if not interrupted:
-                logger.info(f"PHASE 3: Returning to Center X (+{self.max_limit_x:.2f}) (RIGHT)...")
-                # 左端から「右」へ動かすため Raw ONVIF x = -max_limit_x (invert_pan: True環境)
-                cmd_x = -self.max_limit_x if self.invert_pan else self.max_limit_x
-                request = self.ptz.create_type('RelativeMove')
-                request.ProfileToken = self.profile_token
-                request.Translation = {'PanTilt': {'x': cmd_x, 'y': 0.0}}
-                self.ptz.RelativeMove(request)
-                time.sleep(3.2)  # 極大距離移動のため3.2秒間物理旋回完了を待機
+                logger.info(f"PHASE 3: Returning to Center X (+{self.max_limit_x:.2f}) in {max_steps_x} steps (RIGHT)...")
+                execute_blind_move(step_size_x, 0.0, max_steps_x, "Returning RIGHT to Center X")
+                time.sleep(0.4)
 
             if not interrupted:
-                logger.info(f"PHASE 4: Returning to Center Y (+{self.max_limit_y:.2f}) (UP)...")
-                # 下端から「上」へ動かすため Raw ONVIF y = -max_limit_y (invert_tilt: True環境)
-                cmd_y = -self.max_limit_y if self.invert_tilt else self.max_limit_y
-                request = self.ptz.create_type('RelativeMove')
-                request.ProfileToken = self.profile_token
-                request.Translation = {'PanTilt': {'x': 0.0, 'y': cmd_y}}
-                self.ptz.RelativeMove(request)
-                time.sleep(3.2)  # 極大距離移動のため3.2秒間物理旋回完了を待機
+                logger.info(f"PHASE 4: Returning to Center Y (+{self.max_limit_y:.2f}) in {max_steps_y} steps (UP)...")
+                execute_blind_move(0.0, step_size_y, max_steps_y, "Returning UP to Center Y")
+                time.sleep(0.4)
 
             self.current_x = 0.0
             self.current_y = 0.0
