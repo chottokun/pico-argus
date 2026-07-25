@@ -112,8 +112,8 @@ class PTZController:
                     request.Translation = {'PanTilt': {'x': cmd_x, 'y': cmd_y}}
                     self.ptz.RelativeMove(request)
 
-                    # 物理駆動ラグ待機 (安定動作速度 0.18秒)
-                    time.sleep(0.18)
+                    # 物理駆動ラグ待機 (物理モーターが確実に1ステップ回転する0.22秒に設定)
+                    time.sleep(0.22)
 
                     # モニター表示 & キーキャンセル監視
                     if video_reader is not None:
@@ -135,13 +135,13 @@ class PTZController:
             # 1. 左端への追い込み（ブラインド突き当て）
             logger.info("PHASE 1: Hunting LEFT physical edge...")
             execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Hunting LEFT edge")
-            time.sleep(0.5)
+            time.sleep(0.6)
 
             # 2. 下端への追い込み（ブラインド突き当て）
             if not interrupted:
                 logger.info("PHASE 2: Hunting BOTTOM physical edge...")
                 execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
-                time.sleep(0.5)
+                time.sleep(0.6)
 
             # 3. 左下端から、設定された精密な限界値(max_limit_x, max_limit_y)だけ「右・上」へ一括正確移動して真の中心(0.0, 0.0)へ復帰
             if not interrupted:
@@ -151,7 +151,7 @@ class PTZController:
                 request.ProfileToken = self.profile_token
                 request.Translation = {'PanTilt': {'x': cmd_x, 'y': 0.0}}
                 self.ptz.RelativeMove(request)
-                time.sleep(1.2)
+                time.sleep(3.2)  # 極大距離移動のため3.2秒間物理旋回完了を待機
 
             if not interrupted:
                 logger.info(f"PHASE 4: Returning to Center Y (+{self.max_limit_y:.2f}) (UP)...")
@@ -160,7 +160,7 @@ class PTZController:
                 request.ProfileToken = self.profile_token
                 request.Translation = {'PanTilt': {'x': 0.0, 'y': cmd_y}}
                 self.ptz.RelativeMove(request)
-                time.sleep(1.2)
+                time.sleep(3.2)  # 極大距離移動のため3.2秒間物理旋回完了を待機
 
             self.current_x = 0.0
             self.current_y = 0.0
