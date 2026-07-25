@@ -136,25 +136,45 @@ class PTZController:
                     else:
                         logger.info(f"Alignment [{phase_name}]: {i+1}/{total_steps}")
 
-            # 1. 左端への追い込み（ブラインド突き当て）
-            logger.info("PHASE 1: Hunting LEFT physical edge...")
-            execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Hunting LEFT edge")
-            time.sleep(0.6)
+            # ----------------------------------------------------
+            # 左右・上下の物理限界（両壁）へちゃんと振る「フルスキャン・バックラッシュ相殺アライメント」
+            # ----------------------------------------------------
+            # 1. 物理左端へ突き当て
+            logger.info("PHASE 1: Sweeping to LEFT physical edge...")
+            execute_blind_move(-step_size_x, 0.0, 14, "Sweeping LEFT edge")
+            time.sleep(0.4)
 
-            # 2. 下端への追い込み（ブラインド突き当て）
+            # 2. 物理右端へ突き当て（全幅確認）
             if not interrupted:
-                logger.info("PHASE 2: Hunting BOTTOM physical edge...")
-                execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
-                time.sleep(0.6)
-
-            # 3. 左下端から、設定された精密な限界ステップ数(max_steps_x, max_steps_y)だけ「右・上」へステップ分割移動して真の中心(0.0, 0.0)へ復帰
-            if not interrupted:
-                logger.info(f"PHASE 3: Returning to Center X (+{self.max_limit_x:.2f}) in {max_steps_x} steps (RIGHT)...")
-                execute_blind_move(step_size_x, 0.0, max_steps_x, "Returning RIGHT to Center X")
+                logger.info("PHASE 2: Sweeping to RIGHT physical edge...")
+                execute_blind_move(step_size_x, 0.0, 16, "Sweeping RIGHT edge")
                 time.sleep(0.4)
 
+            # 3. 物理下端へ突き当て
             if not interrupted:
-                logger.info(f"PHASE 4: Returning to Center Y (+{self.max_limit_y:.2f}) in {max_steps_y} steps (UP)...")
+                logger.info("PHASE 3: Sweeping to BOTTOM physical edge...")
+                execute_blind_move(0.0, -step_size_y, 14, "Sweeping BOTTOM edge")
+                time.sleep(0.4)
+
+            # 4. 物理上端へ突き当て（全高確認）
+            if not interrupted:
+                logger.info("PHASE 4: Sweeping to TOP physical edge...")
+                execute_blind_move(0.0, step_size_y, 22, "Sweeping TOP edge")
+                time.sleep(0.4)
+
+            # 5. バックラッシュ(ギア遊び)を完全相殺するため、左下物理基準点へ突き当てて一方向運動に揃える
+            if not interrupted:
+                logger.info("PHASE 5: Resetting to LEFT-BOTTOM physical corner for zero-backlash...")
+                execute_blind_move(-step_size_x, 0.0, 15, "Resetting LEFT for Backlash cancel")
+                time.sleep(0.4)
+                execute_blind_move(0.0, -step_size_y, 21, "Resetting BOTTOM for Backlash cancel")
+                time.sleep(0.5)
+
+            # 6. 左下物理基準点から、正確に実測総幅の半分 (右へ7歩 / 上へ10歩) だけ移動して【真の中心原点】へ着地
+            if not interrupted:
+                logger.info(f"PHASE 6: Returning to EXACT CENTER from corner in {max_steps_x} steps RIGHT, {max_steps_y} steps UP...")
+                execute_blind_move(step_size_x, 0.0, max_steps_x, "Returning RIGHT to Center X")
+                time.sleep(0.3)
                 execute_blind_move(0.0, step_size_y, max_steps_y, "Returning UP to Center Y")
                 time.sleep(0.4)
 
