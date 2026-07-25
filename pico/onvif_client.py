@@ -85,9 +85,9 @@ class PTZController:
             if max_steps_y <= 0 or max_steps_y > 20:
                 max_steps_y = 10
 
-            # どのような初期位置からでも確実に突き当たるように、全幅分(片側最大幅の2倍) + マージン2歩を算出
-            hunt_steps_x = (max_steps_x * 2) + 2
-            hunt_steps_y = (max_steps_y * 2) + 2
+            # どのような初期角度・位置からでも絶対に左端・下端の物理ストッパーに突き当たるよう25歩を確保
+            hunt_steps_x = max(25, (max_steps_x * 2) + 8)
+            hunt_steps_y = max(25, (max_steps_y * 2) + 8)
 
             logger.info(f"Configuration limits: self.max_limit_x={self.max_limit_x}, self.max_limit_y={self.max_limit_y}")
             logger.info(f"Target steps: Center-to-Edge X={max_steps_x}, Y={max_steps_y}")
