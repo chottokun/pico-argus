@@ -1,9 +1,36 @@
 [project]
-name = "pico"
+name = "pico-argus"
 version = "0.1.0"
-description = "Add your description here"
+description = "LLM / Multi-Modal AI governed Active Perception Edge AI System with ONVIF PTZ, YOLO-ONNX, and MCP Server"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.13"
+keywords = [
+    "active-perception",
+    "mcp",
+    "model-context-protocol",
+    "onvif",
+    "yolo-onnx",
+    "ollama",
+    "vlm",
+    "edge-ai",
+    "sqlite-fts5",
+    "obsidian-okf"
+]
+authors = [
+    { name = "Pico Argus Contributors" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+]
+
 dependencies = [
     "numpy>=2.5.1",
     "onvif-zeep>=0.2.12",
@@ -14,6 +41,12 @@ dependencies = [
     "httpx>=0.27.0",
     "mcp>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/chottokun/pico-argus"
+Repository = "https://github.com/chottokun/pico-argus.git"
+Documentation = "https://github.com/chottokun/pico-argus#readme"
+"Bug Tracker" = "https://github.com/chottokun/pico-argus/issues"
 
 [project.scripts]
 ptz-cli = "pico.cli.ptz:main"
@@ -31,4 +64,3 @@ package = true
 
 [tool.setuptools.packages.find]
 include = ["pico*"]
-

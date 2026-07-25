@@ -1,5 +1,10 @@
 # Pico Argus 👁️🧠
 
+[![Python](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org/)
+[![Package Manager](https://img.shields.io/badge/uv-Astral-purple.svg)](https://github.com/astral-sh/uv)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+
 > **LLM / Multi-Modal AI 統括型「能動的知覚（Active Perception）」エッジAIシステム**
 > 
 > *ONVIF PTZ 物理制御 × 10ms YOLOテキスト知覚バッファ × オンデマンド VLM 解釈 × SQLite FTS5 / Obsidian (OKF) ナレッジグラフ長期記憶 × MCP (Model Context Protocol) サーバー標準対応*
@@ -27,27 +32,36 @@
 
 ## 🏗️ システムアーキテクチャ
 
-```
-                               ┌──────────────────────────────────────────────┐
-                               │     LLMエージェント / MCP Client (Claude)     │
-                               │           - 脳内プランナー / 司令塔 -        │
-                               └─────┬──────────────┬──────────────┬──────────┘
-                                     │              │              │
-        ┌────────────────────────────┘              │              └────────────────────────────┐
-        ▼ (Tool: set_tracking_target)               ▼ (Tool: analyze_crop_image)                ▼ (Tool: search_wiki / write_wiki)
-┌───────────────┐                          ┌───────────────┐                          ┌──────────────────┐
-│  物理PTZサーボ │                          │   オンデマンド │                          │   SQLite 3.34+   │
-│   (筋肉運動)   │                          │    VLM解釈    │                          │   OKF Wiki Base  │
-└───────┬───────┘                          └───────┬───────┘                          └─────────┬────────┘
-        │ (カメラ旋回・ズーム)                      │ (高精細クロップ解析)                       │ (相互リンク・バックリンク)
-        ▼                                          ▼                                          ▼
- ───────┴──────────────────────────────────────────┴──────────────────────────────────────────┴─────────────────
-                                             物理エッジ環境
- ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
-        ▲                                                                              ▲
-        │ (10ms 高速フレームキャプチャ)                                                   │ (Track ID / クラス名 / 速度ベクトル)
-        └──────────────────── [ 非ブロッキング YOLO-ONNX ＋ ByteTrack ] ────────────────┘
-                                          (常時稼働テキスト知覚バッファ)
+```mermaid
+flowchart TD
+    subgraph Brain ["🧠 脳内プランナー / 司令塔"]
+        LLM["LLM エージェント / MCP Client (Claude)"]
+    end
+
+    subgraph Actuators ["💪 筋肉 (Physical Actuator)"]
+        PTZ["物理 PTZ サーボ (ONVIF / Tapo)"]
+    end
+
+    subgraph Perception ["👁️ 感覚 (Sensing & VLM)"]
+        VLM["オンデマンド VLM 解釈 (Ollama Gemma4)"]
+    end
+
+    subgraph Memory ["💾 記憶 (Long-Term Memory)"]
+        DB["SQLite 3.34+ OKF Wiki Base<br>(WikiLinks & バックリンク)"]
+    end
+
+    subgraph Edge ["⚙️ エッジ物理環境 & 常時知覚バッファ"]
+        YOLO["非ブロッキング YOLO-ONNX + ByteTrack<br>(常時稼働テキスト知覚バッファ 10ms)"]
+    end
+
+    LLM -->|"Tool: set_tracking_target<br>(PID ロックオン)"| PTZ
+    LLM -->|"Tool: analyze_crop_image<br>(スポット視覚解釈)"| VLM
+    LLM <-->|"Tool: search_wiki / write_wiki<br>(記憶の想起 & 相互リンク更新)"| DB
+
+    PTZ -->|"物理旋回・ズーム"| Edge
+    VLM -->|"高精細クロップ解析"| Edge
+    Edge -->|"10ms 高速キャプチャ"| YOLO
+    YOLO -->|"Track ID / クラス名 / 速度ベクトル"| LLM
 ```
 
 ---
@@ -109,7 +123,7 @@ Copy-Item .env.example .env
 ```ini
 TAPO_USER=your_tapo_onvif_username
 TAPO_PASS=your_tapo_onvif_password
-TAPO_IP=10.3.100.176
+TAPO_IP=192.168.0.10
 
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma4:e2b
@@ -125,24 +139,6 @@ uv run python calibrate_tapo.py
 ```
 
 実行が完了すると、カメラは物理可動域の真の中心（原点）に移動して停止し、安全クランプ限界値が `tapo_config.json` に保存されます。
-
-**測定結果の例（2026-07-25 実機検証済み）:**
-- **左右可動限界 (`MAX_LIMIT_X`)**: `±0.89`
-- **上下可動限界 (`MAX_LIMIT_Y`)**: `±0.89`
-
-設定ファイル (`tapo_config.json`):
-```json
-{
-    "MAX_LIMIT_X": 0.96,
-    "MAX_LIMIT_Y": 0.89,
-    "INVERT_PAN": true,
-    "INVERT_TILT": true,
-    "CALIBRATED_AT": "2026-07-25 08:12:58"
-}
-```
-
-> ⚠️ **運動極性の注意点 (Physical Dynamics Note):**
-> 正立設置（通常配置）の Tapo C210 カメラでは、画面右側の物体を画面中央へ向かってカメラを右旋回させるために `"INVERT_PAN": true`, `"INVERT_TILT": true` の設定が必要です（天井吊り下げ設置の場合は `false` に変更）。詳細は [docs/camera_agent.md](file:///e:/Python%20Scripts/Pico/docs/camera_agent.md) の第9章を参照してください。
 
 ---
 
@@ -205,12 +201,12 @@ uv run python -m pico.mcp.server
 
 ---
 
-## 🧪 開発 & 品質保証
+## 🧪 開発 & テスト (実機なし環境対応)
 
-本プロジェクトでは厳しい品質・セキュリティテストを導入しています：
+実機カメラがない環境でも、充実したモック機能とユニットテスト（70件以上）により全コンポーネントのテストが可能です：
 
 ```powershell
-# 全単体テストの実行 (59件)
+# 全単体テストの実行 (71件 passed)
 uv run pytest
 
 # 静的コードチェック & 自動修正
@@ -222,14 +218,20 @@ uv audit
 
 ---
 
-## 📘 関連ドキュメント
+## 📘 ドキュメント目次
 
-- [camera_agent.md](file:///e:/Python%20Scripts/Pico/docs/camera_agent.md): 能動的知覚（Active Perception）詳細設計仕様書
-- [mcp_specification.md](file:///e:/Python%20Scripts/Pico/docs/mcp_specification.md): MCP サーバー接続・ツール詳細仕様書
-- [memory_cli_specification.md](file:///e:/Python%20Scripts/Pico/docs/memory_cli_specification.md): 長期記憶 OKF / ナレッジグラフデータ構造仕様書
+- [docs/index.md](file:///e:/Python%20Scripts/Pico/docs/index.md): 全ドキュメント総合目次
+- [docs/camera_agent.md](file:///e:/Python%20Scripts/Pico/docs/camera_agent.md): 能動的知覚（Active Perception）詳細設計仕様書
+- [docs/mcp_specification.md](file:///e:/Python%20Scripts/Pico/docs/mcp_specification.md): MCP サーバー接続・ツール詳細仕様書
+- [docs/mcp_usecases.md](file:///e:/Python%20Scripts/Pico/docs/mcp_usecases.md): MCP ユースケース・シナリオ集
+- [docs/memory_cli_specification.md](file:///e:/Python%20Scripts/Pico/docs/memory_cli_specification.md): 長期記憶 OKF / ナレッジグラフデータ構造仕様書
 
 ---
 
-## 📜 ライセンス
+## 📜 ライセンス・権利表記
 
-MIT License
+本リポジトリのプログラムコードは **[MIT License](LICENSE)** のもとで公開されています。
+
+ただし、本プロジェクトで利用されるサードパーティ製ライブラリおよび AI モデル（YOLOv8, Ollama/Gemma 等の学習済み重み）には、権利者が定めるオリジナルのライセンスが適用されます。
+
+詳細は **[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)** をご覧ください。

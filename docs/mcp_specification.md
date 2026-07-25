@@ -68,7 +68,7 @@ MCP サーバーは起動時にプロジェクトの `.env` ファイルに記�
 ```ini
 TAPO_USER=your_tapo_app_username    # TapoのONVIF高度設定で作成したユーザー名
 TAPO_PASS=your_tapo_app_password    # TapoのONVIF高度設定で作成したパスワード
-TAPO_IP=10.3.100.176               # TapoカメラのローカルIPアドレス
+TAPO_IP=192.168.0.10               # TapoカメラのローカルIPアドレス
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma4:e2b            # 使用するVLM/LLMモデル名
 OLLAMA_MAX_RPM=12                  # 1分間あたりの最大APIリクエスト許容数
