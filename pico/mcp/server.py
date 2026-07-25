@@ -337,7 +337,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 
                 title = "部屋の全方位環境調査記録_20260725"
                 content = "# 部屋の全方位環境調査記録\n\n- **調査日時**: 2026年7月25日\n- **使用システム**: Pico Cognitive MCP Active Sensing Engine\n\n## 📋 パノラマ全方位調査結果\n\n" + "\n\n".join(survey_results)
-                active_memory.add_document(filepath=f"memory/{title}.md", title=title, content=content, doc_type="survey", aliases=["部屋全方位調査"])
+                active_memory.write_knowledge_data(filepath=f"memory/{title}.md", title=title, content=content, tags="survey", aliases=["部屋全方位調査"])
                 return f"Success: 全方位室内パノラマ調査が完了し、Wikiページ '[[{title}]]' に全結果を保存しました！\n\n{content}"
 
             res_text = await loop.run_in_executor(None, _run_survey)
