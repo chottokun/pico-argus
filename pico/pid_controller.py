@@ -87,9 +87,9 @@ class AdaptivePIDController:
             dx = (kp_x * error_x) + (self.ki * self.integral_x) + (self.kd * diff_x)
             dy = (kp_y * error_y) + (self.ki * self.integral_y) + (self.kd * diff_y)
 
-            # 6. 静止摩擦突破（Minimum Speed Boost）処理
-            # 出力絶対値が微小で0でない場合、モーターが動き出せる最小値へ押し上げる
-            min_speed_y = self.min_speed * 1.5
+            # 6. 静止摩擦・物理重力突破（Minimum Speed Boost）処理
+            # チルト軸は自重持ち上げ抵抗があるため min_speed_y を 0.07 に強化
+            min_speed_y = max(0.07, self.min_speed * 1.8)
             if 0.0 < abs(dx) < self.min_speed:
                 dx = np.sign(dx) * self.min_speed
             if 0.0 < abs(dy) < min_speed_y:

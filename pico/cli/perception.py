@@ -156,8 +156,9 @@ class ContinuousPerceptionLoop:
                                 logger.info(f"🎯 [PTZ TRACKING MOVE] Track {target_obj.track_id} ({getattr(target_obj, 'class_name', '')}) -> Move Pan={dx:.3f}, Tilt={dy:.3f}")
                             self._last_ptz_move_time = curr_time
                     else:
-                        if target_class is not None and target_id is not None:
-                            logger.warning(f"🎯 Target ID {target_id} lost. Auto-relocking for '{target_class}'...")
+                        # ターゲットをロストした、またはターゲットが存在しない場合は即座にPID状態とターゲットIDを完全リセットしてカメラを完全静止
+                        if target_id is not None:
+                            logger.warning(f"🎯 Target ID {target_id} lost. Immediate stop & reset for '{target_class}'...")
                             self.ptz_actuator.lockon_target_id = None
                         self.ptz_actuator.pid.reset()
                 except Exception as e:
