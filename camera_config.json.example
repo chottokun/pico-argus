@@ -1,0 +1,13 @@
+{
+    "MAX_LIMIT_X": 0.96,
+    "MAX_LIMIT_Y": 0.85,
+    "INVERT_PAN": true,
+    "INVERT_TILT": true,
+    "STEP_SIZE_X": 0.15,
+    "STEP_SIZE_Y": 0.10,
+    "TOTAL_STEPS_X": 36,
+    "TOTAL_STEPS_Y": 20,
+    "RETURN_STEPS_X": 18,
+    "RETURN_STEPS_Y": 10,
+    "CALIBRATED_AT": "2026-07-25 00:00:00"
+}
