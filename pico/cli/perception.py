@@ -126,15 +126,18 @@ class ContinuousPerceptionLoop:
                     target_id = self.ptz_actuator.lockon_target_id
                     target_class = self.ptz_actuator.lockon_class_name
 
+                    # 信頼度 0.50 以上のオブジェクトのみを対象とし、指定外は完全に無視
+                    valid_tracked = [t for t in tracked if t.confidence >= 0.50]
+
                     if target_id is not None:
-                        target_obj = next((t for t in tracked if t.track_id == target_id), None)
+                        target_obj = next((t for t in valid_tracked if t.track_id == target_id), None)
                     elif target_class is not None:
-                        candidates = [t for t in tracked if getattr(t, "class_name", "") == target_class]
+                        candidates = [t for t in valid_tracked if getattr(t, "class_name", "") == target_class]
                         if candidates:
                             best = max(candidates, key=lambda x: x.confidence)
                             self.ptz_actuator.lockon_target_id = best.track_id
                             target_obj = best
-                            logger.info(f"🎯 Auto-Relocked onto '{target_class}' (ID: {best.track_id})")
+                            logger.info(f"🎯 Auto-Relocked onto '{target_class}' (ID: {best.track_id}, conf: {best.confidence:.2f})")
 
                     if target_obj is not None:
                         curr_time = time.monotonic()
