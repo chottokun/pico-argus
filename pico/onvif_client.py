@@ -103,8 +103,9 @@ class PTZController:
                         break
 
                     # 物理カメラの運動極性(invert_pan / invert_tilt)を反映してコマンド生成
-                    cmd_x = -dx if self.invert_pan else dx
-                    cmd_y = -dy if self.invert_tilt else dy
+                    # Raw ONVIF仕様 (invert_pan: True): dx < 0 (物理左) -> +dx, dx > 0 (物理右) -> -dx
+                    cmd_x = dx if self.invert_pan else -dx
+                    cmd_y = dy if self.invert_tilt else -dy
 
                     # コマンド送信
                     request = self.ptz.create_type('RelativeMove')
@@ -143,9 +144,10 @@ class PTZController:
                 execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
                 time.sleep(0.6)
 
-            # 3. 左下端から、設定された精密な限界値(max_limit_x, max_limit_y)だけ「右・上」へ一括正確移動して真の中心(0.0, 0.0)へ復帰
+            # 3. 左下端から、設定された精密な限界値(max_limit_x, max_limit_y)だけ「右・上」へ一括移動して真の中心(0.0, 0.0)へ復帰
             if not interrupted:
                 logger.info(f"PHASE 3: Returning to Center X (+{self.max_limit_x:.2f}) (RIGHT)...")
+                # 左端から「右」へ動かすため Raw ONVIF x = -max_limit_x (invert_pan: True環境)
                 cmd_x = -self.max_limit_x if self.invert_pan else self.max_limit_x
                 request = self.ptz.create_type('RelativeMove')
                 request.ProfileToken = self.profile_token
@@ -155,6 +157,7 @@ class PTZController:
 
             if not interrupted:
                 logger.info(f"PHASE 4: Returning to Center Y (+{self.max_limit_y:.2f}) (UP)...")
+                # 下端から「上」へ動かすため Raw ONVIF y = -max_limit_y (invert_tilt: True環境)
                 cmd_y = -self.max_limit_y if self.invert_tilt else self.max_limit_y
                 request = self.ptz.create_type('RelativeMove')
                 request.ProfileToken = self.profile_token

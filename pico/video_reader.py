@@ -12,24 +12,44 @@ class RTSPVideoReader:
 
     def __init__(self, url: str) -> None:
         self.url: str = url
-        self.cap: cv2.VideoCapture = cv2.VideoCapture(url)
+        self.cap: Optional[cv2.VideoCapture] = None
         self.frame: Optional[np.ndarray] = None
         self.ret: bool = False
-        self.last_frame_time: float = 0.0
+        self.last_frame_time: float = time.monotonic()
         
         self.running: bool = True
         self.stop_event: threading.Event = threading.Event()
         self.lock: threading.Lock = threading.Lock()
         
+        self._connect_cap()
         self.thread: threading.Thread = threading.Thread(target=self._keep_reading, daemon=True)
         self.thread.start()
 
+    def _connect_cap(self) -> None:
+        """RTSPキャプチャをオープンし、FFmpegの内部バッファを最小1に制限して遅延をゼロ化する。"""
+        with self.lock:
+            if self.cap is not None and self.cap.isOpened():
+                self.cap.release()
+            self.cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
+            # 内部バッファサイズを最小1に設定（遅延・スタック防止）
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
     def _keep_reading(self) -> None:
-        """バックグラウンドでフレームを常時読み込むループ。"""
+        """バックグラウンドでフレームを常時読み込むループ。自動再接続ウォッチドッグ付き。"""
+        consecutive_failures = 0
+
         while not self.stop_event.is_set():
-            if not self.cap.isOpened():
-                logger.error(f"VideoCapture is not opened for url: {self.url}")
-                time.sleep(1.0)
+            # ウォッチドッグ: 3.0秒以上フレームが更新されていない、または連続失敗時は自動再接続
+            now = time.monotonic()
+            with self.lock:
+                stale = (now - self.last_frame_time) > 3.0
+                opened = self.cap is not None and self.cap.isOpened()
+
+            if not opened or stale or consecutive_failures >= 5:
+                logger.warning(f"⚠️ RTSP stream stale or connection lost (stale={stale}, fails={consecutive_failures}). Reconnecting to {self.url}...")
+                self._connect_cap()
+                consecutive_failures = 0
+                time.sleep(0.5)
                 continue
             
             try:
@@ -39,11 +59,13 @@ class RTSPVideoReader:
                         self.frame = frame
                         self.ret = ret
                         self.last_frame_time = time.monotonic()
+                    consecutive_failures = 0
                 else:
-                    # 通信途絶時のリトライのために短い待機
-                    time.sleep(0.01)
+                    consecutive_failures += 1
+                    time.sleep(0.02)
             except Exception as e:
                 logger.error(f"Error reading frame from RTSP stream: {e}")
+                consecutive_failures += 1
                 time.sleep(0.1)
 
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:

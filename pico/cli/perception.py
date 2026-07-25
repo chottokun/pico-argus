@@ -437,8 +437,15 @@ class OnDemandPerceptionCLI:
 
     def get_live_snapshot_data(self) -> dict:
         self.start_monitor()
-        ret, frame = self.reader.read()
-        if not ret or frame is None:
+        # RTSP内部バッファの遅延を解消するため最新のフレームまで消化読み込み
+        frame = None
+        for _ in range(5):
+            ret, f = self.reader.read()
+            if ret and f is not None:
+                frame = f
+            time.sleep(0.02)
+
+        if frame is None:
             return {"error": "Failed to read frame"}
         os.makedirs("monitor", exist_ok=True)
         save_path = "monitor/live_snapshot.jpg"
