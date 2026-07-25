@@ -406,7 +406,10 @@ class OnDemandPerceptionCLI:
             self.perception_loop.stop()
         if getattr(self, "is_reader_owned", True):
             self.reader.release()
-        asyncio.run(self.vlm.close())
+        try:
+            asyncio.run(self.vlm.close())
+        except Exception as e:
+            logger.debug(f"VLM client close exception ignored: {e}")
 
 
 def main():
