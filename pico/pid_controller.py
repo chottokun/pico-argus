@@ -13,19 +13,19 @@ class AdaptivePIDController:
 
     def __init__(
         self, kp_base: float = 0.5, ki: float = 0.05, kd: float = 0.01,
-        dead_zone: float = 0.05, min_speed: float = 0.03, max_step: float = 0.12,
-        integral_limit: float = 0.30, alpha: float = 2.0, max_acceleration: float = 0.03
+        dead_zone: float = 0.03, min_speed: float = 0.04, max_step: float = 0.12,
+        integral_limit: float = 0.30, alpha: float = 2.5, max_acceleration: float = 0.04
     ) -> None:
         self.kp_base: float = kp_base
         self.ki: float = ki
         self.kd: float = kd
         
-        self.dead_zone: float = dead_zone      # 画面中心での不感帯閾値
-        self.min_speed: float = min_speed      # 静止摩擦を突破する最小移動速度ブースト
+        self.dead_zone: float = dead_zone      # 画面中心での不感帯閾値 (0.03に絞って感度アップ)
+        self.min_speed: float = min_speed      # 物理摩擦突破用ブースト (0.04)
         self.max_step: float = max_step        # 1ステップあたりの最大移動ステップ制限
         self.integral_limit: float = integral_limit  # 積分ワインドアップ防止用の制限閾値
         self.alpha: float = alpha              # 指数適応ゲインの感度制御係数
-        self.max_acceleration: float = max_acceleration  # 1ステップあたりの最大加速度（速度変化）制限
+        self.max_acceleration: float = max_acceleration  # 1ステップあたりの最大加速度制限
 
         # 内部制御状態の初期化
         self.prev_error_x: float = 0.0

@@ -149,7 +149,7 @@ class ContinuousPerceptionLoop:
 
                             dx, dy = self.ptz_actuator.pid.calculate_step(cx, cy, dt_move)
                             if dx != 0.0 or dy != 0.0:
-                                self.ptz_actuator.ptz.safe_move(dx, dy)
+                                self.ptz_actuator.ptz.safe_move(dx, -dy)
                                 logger.info(f"🎯 [PTZ TRACKING MOVE] Track {target_obj.track_id} ({getattr(target_obj, 'class_name', '')}) -> Move Pan={dx:.3f}, Tilt={dy:.3f}")
                             self._last_ptz_move_time = curr_time
                     else:
