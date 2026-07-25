@@ -49,7 +49,13 @@ class PTZActuator:
                 align_to_home=align,
                 video_reader=video_reader,
                 invert_pan=self.config.invert_pan,
-                invert_tilt=self.config.invert_tilt
+                invert_tilt=self.config.invert_tilt,
+                step_size_x=getattr(self.config, "step_size_x", 0.15),
+                step_size_y=getattr(self.config, "step_size_y", 0.10),
+                return_steps_x=getattr(self.config, "return_steps_x", None),
+                return_steps_y=getattr(self.config, "return_steps_y", None),
+                hunt_steps_x=getattr(self.config, "hunt_steps_x", 25),
+                hunt_steps_y=getattr(self.config, "hunt_steps_y", 25)
             )
 
     def send_pulse_move(self, pan: float, tilt: float):

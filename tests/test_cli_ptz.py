@@ -38,7 +38,13 @@ def test_send_pulse_move(mock_ptz_class, mock_config):
         align_to_home=False,
         video_reader=None,
         invert_pan=False,
-        invert_tilt=False
+        invert_tilt=False,
+        step_size_x=0.15,
+        step_size_y=0.10,
+        return_steps_x=None,
+        return_steps_y=None,
+        hunt_steps_x=25,
+        hunt_steps_y=25
     )
     mock_ptz_instance.safe_move.assert_called_once_with(0.1, -0.05)
 

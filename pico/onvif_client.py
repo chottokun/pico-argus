@@ -18,18 +18,30 @@ class PTZController:
         align_to_home: bool = False,
         video_reader: Optional[RTSPVideoReader] = None,
         invert_pan: bool = False,
-        invert_tilt: bool = False
+        invert_tilt: bool = False,
+        step_size_x: float = 0.15,
+        step_size_y: float = 0.10,
+        return_steps_x: Optional[int] = None,
+        return_steps_y: Optional[int] = None,
+        hunt_steps_x: int = 25,
+        hunt_steps_y: int = 25
     ) -> None:
         self.ip: str = ip
         self.user: str = user
         self.password: str = password
         self.port: int = port
         
-        # 可動限界値と反転フラグ
+        # 可動限界値と反転フラグ、アライメントステップパラメータ
         self.max_limit_x: float = max_limit_x
         self.max_limit_y: float = max_limit_y
         self.invert_pan: bool = invert_pan
         self.invert_tilt: bool = invert_tilt
+        self.step_size_x: float = step_size_x
+        self.step_size_y: float = step_size_y
+        self.return_steps_x: int = return_steps_x if return_steps_x is not None else int(round(max_limit_x / step_size_x))
+        self.return_steps_y: int = return_steps_y if return_steps_y is not None else int(round(max_limit_y / step_size_y))
+        self.hunt_steps_x: int = hunt_steps_x
+        self.hunt_steps_y: int = hunt_steps_y
         
         # 現在の推測位置 (0.0, 0.0 はキャリブレーション後の真の中心原点と仮定)
         self.current_x: float = 0.0
@@ -42,7 +54,7 @@ class PTZController:
         # ONVIF 接続の初期化
         try:
             self.mycam: ONVIFCamera = ONVIFCamera(self.ip, self.port, self.user, self.password)
-            self.ptz = self.mycam.create_ptz_service()
+            self.ptz = self.mycam.create_type if False else self.mycam.create_ptz_service()
             self.media = self.mycam.create_media_service()
             
             # PTZ 設定を持つ最初のプロファイルトークンを自動探索
@@ -68,29 +80,20 @@ class PTZController:
         self.worker_thread.start()
 
     def _align_to_home_position(self, video_reader: Optional[RTSPVideoReader] = None) -> None:
-        """物理限界へのブラインド突き当てを行い、tapo_config.jsonの限界値に基づき中心へ復帰する高速・ロバストなアライメント。"""
+        """物理限界へのブラインド突き当てを行い、camera_config.jsonの限界ステップ数に基づき中心へ復帰する高速・ロバストなアライメント。"""
         logger.info("Starting startup Blind Physical Home Alignment...")
         try:
-            step_size_x = 0.15
-            step_size_y = 0.10
+            step_size_x = self.step_size_x
+            step_size_y = self.step_size_y
             interrupted = False
 
-            # 設定値(tapo_config.json)から中心から端までの最大ステップ数を逆算
-            max_steps_x = int(round(self.max_limit_x / step_size_x))
-            max_steps_y = int(round(self.max_limit_y / step_size_y))
-
-            # バリデーションとフォールバック
-            if max_steps_x <= 0 or max_steps_x > 20:
-                max_steps_x = 8
-            if max_steps_y <= 0 or max_steps_y > 20:
-                max_steps_y = 10
-
-            # どのような初期角度・位置からでも絶対に左端・下端の物理ストッパーに突き当たるよう25歩を確保
-            hunt_steps_x = max(25, (max_steps_x * 2) + 8)
-            hunt_steps_y = max(25, (max_steps_y * 2) + 8)
+            max_steps_x = self.return_steps_x
+            max_steps_y = self.return_steps_y
+            hunt_steps_x = self.hunt_steps_x
+            hunt_steps_y = self.hunt_steps_y
 
             logger.info(f"Configuration limits: self.max_limit_x={self.max_limit_x}, self.max_limit_y={self.max_limit_y}")
-            logger.info(f"Target steps: Center-to-Edge X={max_steps_x}, Y={max_steps_y}")
+            logger.info(f"Return steps: Center-to-Edge X={max_steps_x}, Y={max_steps_y} (step_size: X={step_size_x}, Y={step_size_y})")
             logger.info(f"Blind hunting steps to corner: X={hunt_steps_x} (LEFT), Y={hunt_steps_y} (BOTTOM)")
 
             # ----------------------------------------------------

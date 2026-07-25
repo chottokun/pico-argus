@@ -49,11 +49,17 @@ class AppConfig:
         show_env = os.getenv("SHOW_MONITOR", os.getenv("TAPO_SHOW_MONITOR", "false")).lower()
         self.show_monitor: bool = show_env in ("true", "1", "yes")
 
-        # キャリブレーション限界値と反転設定の読み込み
+        # キャリブレーション限界値とアライメントステップ設定の読み込み
         self.max_limit_x: float = DEFAULT_MAX_LIMIT_X
         self.max_limit_y: float = DEFAULT_MAX_LIMIT_Y
         self.invert_pan: bool = False
         self.invert_tilt: bool = False
+        self.step_size_x: float = 0.15
+        self.step_size_y: float = 0.10
+        self.return_steps_x: int = 7
+        self.return_steps_y: int = 9
+        self.hunt_steps_x: int = 25
+        self.hunt_steps_y: int = 25
         self._load_calibration_config(config_path)
 
     def _require_env(self, name: str) -> str:
@@ -77,9 +83,16 @@ class AppConfig:
                     self.max_limit_y = data.get("MAX_LIMIT_Y", DEFAULT_MAX_LIMIT_Y)
                     self.invert_pan = data.get("INVERT_PAN", False)
                     self.invert_tilt = data.get("INVERT_TILT", False)
+                    self.step_size_x = data.get("STEP_SIZE_X", 0.15)
+                    self.step_size_y = data.get("STEP_SIZE_Y", 0.10)
+                    self.return_steps_x = data.get("RETURN_STEPS_X", int(round(self.max_limit_x / self.step_size_x)))
+                    self.return_steps_y = data.get("RETURN_STEPS_Y", int(round(self.max_limit_y / self.step_size_y)))
+                    self.hunt_steps_x = data.get("HUNT_STEPS_X", 25)
+                    self.hunt_steps_y = data.get("HUNT_STEPS_Y", 25)
                     logger.info(
                         f"Loaded calibration config from {target_path} - "
                         f"Limits X: ±{self.max_limit_x}, Y: ±{self.max_limit_y} | "
+                        f"Return Steps: X={self.return_steps_x}, Y={self.return_steps_y} | "
                         f"Invert Pan: {self.invert_pan}, Tilt: {self.invert_tilt}"
                     )
             except Exception as e:
