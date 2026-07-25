@@ -5,7 +5,7 @@
     "INVERT_TILT": true,
     "STEP_SIZE_X": 0.15,
     "STEP_SIZE_Y": 0.10,
-    "RETURN_STEPS_X": 7,
+    "RETURN_STEPS_X": 4,
     "RETURN_STEPS_Y": 10,
     "CALIBRATED_AT": "2026-07-25 15:07:20"
 }
