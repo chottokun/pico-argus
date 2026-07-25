@@ -132,7 +132,10 @@ class ContinuousPerceptionLoop:
                     if target_id is not None:
                         target_obj = next((t for t in valid_tracked if t.track_id == target_id), None)
                     elif target_class is not None:
-                        candidates = [t for t in valid_tracked if getattr(t, "class_name", "") == target_class]
+                        candidates = [
+                            t for t in valid_tracked
+                            if (COCO_CLASSES[t.class_id] if t.class_id < len(COCO_CLASSES) else "") == target_class
+                        ]
                         if candidates:
                             best = max(candidates, key=lambda x: x.confidence)
                             self.ptz_actuator.lockon_target_id = best.track_id
@@ -153,7 +156,8 @@ class ContinuousPerceptionLoop:
                             dx, dy = self.ptz_actuator.pid.calculate_step(cx, cy, dt_move)
                             if dx != 0.0 or dy != 0.0:
                                 self.ptz_actuator.ptz.safe_move(dx, dy)
-                                logger.info(f"🎯 [PTZ TRACKING MOVE] Track {target_obj.track_id} ({getattr(target_obj, 'class_name', '')}) -> Move Pan={dx:.3f}, Tilt={dy:.3f}")
+                                c_name = COCO_CLASSES[target_obj.class_id] if target_obj.class_id < len(COCO_CLASSES) else "unknown"
+                                logger.info(f"🎯 [PTZ TRACKING MOVE] Track {target_obj.track_id} ({c_name}) -> Move Pan={dx:.3f}, Tilt={dy:.3f}")
                             self._last_ptz_move_time = curr_time
                     else:
                         # ターゲットをロストした、またはターゲットが存在しない場合は即座にPID状態とターゲットIDを完全リセットしてカメラを完全静止
