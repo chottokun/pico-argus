@@ -154,9 +154,9 @@ for i in range(center_steps_x):
             cv2.imshow("Tapo C210 Dynamic Calibration Wizard", display_frame)
             cv2.waitKey(1)
 
-# 下端から「上(UP)」へ動かすため cmd_y = -STEP_SIZE_Y (invert_tilt: True環境)
+# 下端から「上(UP)」へ動かすため cmd_y = STEP_SIZE_Y (invert_tilt: True環境)
 for i in range(center_steps_y):
-    cmd_y = -STEP_SIZE_Y if config.invert_tilt else STEP_SIZE_Y
+    cmd_y = STEP_SIZE_Y if config.invert_tilt else -STEP_SIZE_Y
     ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': 0.0, 'y': cmd_y}}})
     time.sleep(RTSP_LAG_TIMEOUT)
     if SHOW_PREVIEW:
