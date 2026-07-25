@@ -381,9 +381,10 @@ class OnDemandPerceptionCLI:
         return self.perception_loop.configure_event_filter(cooldown_sec=cooldown_sec, allowed_classes=allowed_classes)
 
     def analyze_crop_data(self, track_id: Optional[int] = None, class_filter: Optional[str] = None, query: str = "") -> dict:
-        self.start_monitor()
-        ret, frame = self.reader.read()
-        if not ret or frame is None:
+        frame = self.perception_loop.get_latest_frame()
+        if frame is None:
+            ret, frame = self.reader.read()
+        if frame is None:
             return {"error": "Failed to read frame"}
 
         # 最新の検出・追跡状態を同期更新
