@@ -152,46 +152,26 @@ class PTZController:
             logger.info(f"Calibrated Steps: Full Sweep (X={total_sweep_x}, Y={total_sweep_y}) | Center Return (X={steps_to_center_x}, Y={steps_to_center_y})")
 
             # ----------------------------------------------------
-            # camera_config.json のキャリブレーション実測データに基づく完全アライメント
+            # calibrate_tapo.py と 100% 同一の証明済み黄金アライメント
             # ----------------------------------------------------
-            # 1. 物理左端へ完全突き当て
-            logger.info(f"PHASE 1: Hunting LEFT physical edge ({hunt_steps_x} steps)...")
-            execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Hunting LEFT edge")
-            time.sleep(0.4)
+            # 1. 物理左端へ完全突き当て (左壁)
+            logger.info("PHASE 1: Resetting to LEFT physical edge...")
+            execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Resetting to LEFT edge")
+            time.sleep(0.5)
 
-            # 2. 左端から右端までの【実測全幅 15歩】(total_sweep_x) を完全フルスキャン！
+            # 2. 物理下端へ完全突き当て (下壁)
             if not interrupted:
-                logger.info(f"PHASE 2: Full Sweep RIGHT to opposite edge ({total_sweep_x} steps)...")
-                execute_blind_move(step_size_x, 0.0, total_sweep_x, "Full Sweep RIGHT")
-                time.sleep(0.4)
+                logger.info("PHASE 2: Resetting to BOTTOM physical edge...")
+                execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Resetting to BOTTOM edge")
+                time.sleep(0.6)
 
-            # 3. 物理下端へ完全突き当て
+            # 3. 左下物理基準点から、calibrate_tapo.py 実測の中央歩数 (右へ7歩 / 上へ10歩) だけ正確に一方向移動して【真の中心原点】へ完全着地！
             if not interrupted:
-                logger.info(f"PHASE 3: Hunting BOTTOM physical edge ({hunt_steps_y} steps)...")
-                execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
-                time.sleep(0.4)
-
-            # 4. 下端から上端までの【実測全高 20歩】(total_sweep_y) を完全フルスキャン！
-            if not interrupted:
-                logger.info(f"PHASE 4: Full Sweep UP to opposite edge ({total_sweep_y} steps)...")
-                execute_blind_move(0.0, step_size_y, total_sweep_y, "Full Sweep UP")
-                time.sleep(0.4)
-
-            # 5. バックラッシュ(ギア遊び)を完全相殺するため、左下物理基準点へ突き当て
-            if not interrupted:
-                logger.info("PHASE 5: Resetting to LEFT-BOTTOM physical corner for zero-backlash...")
-                execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Resetting LEFT for Backlash cancel")
-                time.sleep(0.4)
-                execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Resetting BOTTOM for Backlash cancel")
-                time.sleep(0.5)
-
-            # 6. 左下物理基準点から、実測全幅・全高のぴったり半分 (X=7歩, Y=10歩) だけ復帰して【真の中心原点】へ着地！
-            if not interrupted:
-                logger.info(f"PHASE 6: Returning to EXACT CENTER from corner (X={steps_to_center_x} steps RIGHT, Y={steps_to_center_y} steps UP)...")
+                logger.info(f"PHASE 3: Returning to EXACT CENTER from corner (X={steps_to_center_x} steps RIGHT, Y={steps_to_center_y} steps UP)...")
                 execute_blind_move(step_size_x, 0.0, steps_to_center_x, "Returning RIGHT to Center X")
-                time.sleep(0.3)
-                execute_blind_move(0.0, step_size_y, steps_to_center_y, "Returning UP to Center Y")
                 time.sleep(0.4)
+                execute_blind_move(0.0, step_size_y, steps_to_center_y, "Returning UP to Center Y")
+                time.sleep(0.5)
 
             self.current_x = 0.0
             self.current_y = 0.0
