@@ -143,23 +143,31 @@ class PTZController:
                 execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
                 time.sleep(0.5)
 
-            # 3. 設定値に基づき「右・上」に戻して真の中心にアライメント
+            # 3. 左下端から、設定された精密な限界値(max_limit_x, max_limit_y)だけ「右・上」へ一括正確移動して真の中心(0.0, 0.0)へ復帰
             if not interrupted:
-                logger.info(f"PHASE 3: Returning to Center by X: {max_steps_x} steps (RIGHT)...")
-                execute_blind_move(step_size_x, 0.0, max_steps_x, "Returning Center X")
-                time.sleep(0.5)
+                logger.info(f"PHASE 3: Returning to Center X (+{self.max_limit_x:.2f}) (RIGHT)...")
+                cmd_x = -self.max_limit_x if self.invert_pan else self.max_limit_x
+                request = self.ptz.create_type('RelativeMove')
+                request.ProfileToken = self.profile_token
+                request.Translation = {'PanTilt': {'x': cmd_x, 'y': 0.0}}
+                self.ptz.RelativeMove(request)
+                time.sleep(1.2)
 
             if not interrupted:
-                logger.info(f"PHASE 4: Returning to Center by Y: {max_steps_y} steps (UP)...")
-                execute_blind_move(0.0, step_size_y, max_steps_y, "Returning Center Y")
+                logger.info(f"PHASE 4: Returning to Center Y (+{self.max_limit_y:.2f}) (UP)...")
+                cmd_y = -self.max_limit_y if self.invert_tilt else self.max_limit_y
+                request = self.ptz.create_type('RelativeMove')
+                request.ProfileToken = self.profile_token
+                request.Translation = {'PanTilt': {'x': 0.0, 'y': cmd_y}}
+                self.ptz.RelativeMove(request)
+                time.sleep(1.2)
 
-            time.sleep(1.0)
             self.current_x = 0.0
             self.current_y = 0.0
             if interrupted:
                 logger.warning("Home Alignment was manually bypassed/interrupted. Current position established as (0.0, 0.0).")
             else:
-                logger.info("Home Alignment completed successfully. Origin established.")
+                logger.info("Home Alignment completed successfully. Exact origin established at (0.0, 0.0).")
             # ウィンドウ破棄は行わず、MonitorWindowスレッドと同一ウィンドウを単一維持する
         except Exception as e:
             logger.error(f"Failed to perform Home Alignment: {e}")
