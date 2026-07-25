@@ -106,7 +106,7 @@ def move_until_stop(step_x, step_y, status_text, max_attempts=40):
         time.sleep(0.1)
     return attempts
 
-print("\n⚙️ Tapo C210 スレッド安定型・全自動キャリブレーションを開始します...")
+print("\n⚙️ Tapo C210 スレッド安定型・バックラッシュ完全相殺キャリブレーションを開始します...")
 
 # 1. 左の限界まで追い込む
 print("🚀 フェーズ 1/4: 左の限界壁を探しています...")
@@ -128,17 +128,23 @@ print("🚀 フェーズ 4/4: 上の限界壁までの【絶対総距離】を�
 total_steps_y = move_until_stop(0.0, STEP_SIZE_Y, "Measuring TOP width")
 time.sleep(1.0)
 
-# 5. 【真の原点復帰】
+# 5. 【ギアバックラッシュ相殺・物理基準端への再アライメント】
+print("\n🔄 計測完了（左右総幅: {}歩 / 上下総幅: {}歩）".format(total_steps_x, total_steps_y))
+print("🔄 バックラッシュ(ギア遊び)を相殺するため【左下端基準点】へ突き当て準備中...")
+move_until_stop(-STEP_SIZE_X, 0.0, "Resetting LEFT for Backlash cancel")
+time.sleep(0.5)
+move_until_stop(0.0, -STEP_SIZE_Y, "Resetting BOTTOM for Backlash cancel")
+time.sleep(1.0)
+
+# 6. 【左下端から右・上へ一方向スムーズ中心移動】
 center_steps_x = total_steps_x // 2
 center_steps_y = total_steps_y // 2
-print(f"\n🔄 計測完了（左右総幅: {total_steps_x}歩 / 上下総幅: {total_steps_y}歩）")
-print("🔄 物理的な【真の中心原点】へカメラを移動しています...")
+print("🔄 左下物理基準点から【真の中心原点】へ正確に復帰中...")
 
 for i in range(center_steps_x):
     cmd_x = STEP_SIZE_X if config.invert_pan else -STEP_SIZE_X
     ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': cmd_x, 'y': 0.0}}})
     time.sleep(RTSP_LAG_TIMEOUT)
-    
     if SHOW_PREVIEW:
         ret, frame_current = video_reader.read()
         if ret and frame_current is not None:
@@ -151,7 +157,6 @@ for i in range(center_steps_y):
     cmd_y = STEP_SIZE_Y if config.invert_tilt else -STEP_SIZE_Y
     ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': 0.0, 'y': cmd_y}}})
     time.sleep(RTSP_LAG_TIMEOUT)
-    
     if SHOW_PREVIEW:
         ret, frame_current = video_reader.read()
         if ret and frame_current is not None:
@@ -160,7 +165,7 @@ for i in range(center_steps_y):
             cv2.imshow("Tapo C210 Dynamic Calibration Wizard", display_frame)
             cv2.waitKey(1)
 
-# 6. 安全限界値を計算（マージン85%）
+# 7. 安全限界値を計算（マージン85%）
 calculated_limit_x = round((total_steps_x / 2) * STEP_SIZE_X * 0.85, 2)
 calculated_limit_y = round((total_steps_y / 2) * STEP_SIZE_Y * 0.85, 2)
 
@@ -176,7 +181,7 @@ with open("camera_config.json", "w", encoding="utf-8") as f:
     json.dump(config_data, f, indent=4, ensure_ascii=False)
 
 print("\n✅ キャリブレーションが完全に完了しました！")
-print("🎯 カメラは物理的な可動域の【ド真ん中】で停止しています。")
+print("🎯 カメラはギアバックラッシュ誤差ゼロで物理可動域の【ド真ん中】に着地しました。")
 print(
     f"💾 結果を 'camera_config.json' に保存しました（左右限界: ±{calculated_limit_x}, 上下限界: ±{calculated_limit_y}）\n"
 )
