@@ -136,13 +136,14 @@ time.sleep(0.5)
 move_until_stop(0.0, -STEP_SIZE_Y, "Resetting BOTTOM for Backlash cancel")
 time.sleep(1.0)
 
-# 6. 【左下端から右・上へ一方向スムーズ中心移動】
+# 6. 【左下端から「右・上」へ一方向スムーズ中心移動】
 center_steps_x = total_steps_x // 2
 center_steps_y = total_steps_y // 2
-print("🔄 左下物理基準点から【真の中心原点】へ正確に復帰中...")
+print("🔄 左下物理基準点から【真の中心原点】へ「右・上」移動で正確に復帰中...")
 
+# 左端から「右(RIGHT)」へ動かすため cmd_x = -STEP_SIZE_X (invert_pan: True環境)
 for i in range(center_steps_x):
-    cmd_x = STEP_SIZE_X if config.invert_pan else -STEP_SIZE_X
+    cmd_x = -STEP_SIZE_X if config.invert_pan else STEP_SIZE_X
     ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': cmd_x, 'y': 0.0}}})
     time.sleep(RTSP_LAG_TIMEOUT)
     if SHOW_PREVIEW:
@@ -153,8 +154,9 @@ for i in range(center_steps_x):
             cv2.imshow("Tapo C210 Dynamic Calibration Wizard", display_frame)
             cv2.waitKey(1)
 
+# 下端から「上(UP)」へ動かすため cmd_y = -STEP_SIZE_Y (invert_tilt: True環境)
 for i in range(center_steps_y):
-    cmd_y = STEP_SIZE_Y if config.invert_tilt else -STEP_SIZE_Y
+    cmd_y = -STEP_SIZE_Y if config.invert_tilt else STEP_SIZE_Y
     ptz.RelativeMove({'ProfileToken': profile_token, 'Translation': {'PanTilt': {'x': 0.0, 'y': cmd_y}}})
     time.sleep(RTSP_LAG_TIMEOUT)
     if SHOW_PREVIEW:
