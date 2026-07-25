@@ -68,9 +68,9 @@ class AdaptivePIDController:
             if dt <= 0.001:
                 dt = 0.2  # デフォルトのタイムステップにフォールバック
 
-            # 2. VOR規範型の比例ゲインKp非線形指数適応 (チルト軸Yは物理重力抵抗のため1.8倍ブースト)
+            # 2. VOR規範型の比例ゲインKp非線形指数適応 (チルト軸Yは重力抵抗克服のため2.5倍ブースト)
             kp_x = self.kp_base * (1.0 - np.exp(-self.alpha * abs(error_x)))
-            kp_y = self.kp_base * 1.8 * (1.0 - np.exp(-self.alpha * abs(error_y)))
+            kp_y = self.kp_base * 2.5 * (1.0 - np.exp(-self.alpha * abs(error_y)))
 
             # 3. 積分項（累積誤差）の加算とアンチワインドアップ（クランプ）
             self.integral_x += error_x * dt
@@ -88,8 +88,8 @@ class AdaptivePIDController:
             dy = (kp_y * error_y) + (self.ki * self.integral_y) + (self.kd * diff_y)
 
             # 6. 静止摩擦・物理重力突破（Minimum Speed Boost）処理
-            # チルト軸は自重持ち上げ抵抗があるため min_speed_y を 0.07 に強化
-            min_speed_y = max(0.07, self.min_speed * 1.8)
+            # チルト軸はレンズユニットの自重持ち上げ抵抗があるため min_speed_y を 0.08 に強化
+            min_speed_y = max(0.08, self.min_speed * 2.0)
             if 0.0 < abs(dx) < self.min_speed:
                 dx = np.sign(dx) * self.min_speed
             if 0.0 < abs(dy) < min_speed_y:
@@ -104,13 +104,14 @@ class AdaptivePIDController:
             self.prev_error_y = error_y
 
         # 8. スルーレート（加速度）制限の適用
-        # 前回の出力値からの変化量を max_acceleration の範囲にクランプする
+        # チルト軸(Y)は重力抵抗に打ち勝つため加速度制限を 0.10 に解放
         if self.max_acceleration > 0.0:
             diff_dx = dx - self.prev_output_x
             diff_dy = dy - self.prev_output_y
 
+            max_acc_y = max(0.10, self.max_acceleration * 2.5)
             clamped_diff_dx = max(-self.max_acceleration, min(self.max_acceleration, diff_dx))
-            clamped_diff_dy = max(-self.max_acceleration, min(self.max_acceleration, diff_dy))
+            clamped_diff_dy = max(-max_acc_y, min(max_acc_y, diff_dy))
 
             dx = self.prev_output_x + clamped_diff_dx
             dy = self.prev_output_y + clamped_diff_dy
