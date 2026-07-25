@@ -5,6 +5,8 @@ from pico.cli.perception import OnDemandPerceptionCLI
 from pico.cli.ptz import PTZActuator
 
 import os
+import signal
+import sys
 
 os.makedirs("logs", exist_ok=True)
 log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -23,6 +25,12 @@ file_handler.setFormatter(log_formatter)
 root_logger.addHandler(file_handler)
 
 logger = logging.getLogger("LiveServerRunner")
+
+def emergency_shutdown(signum, frame):
+    logger.info("👋 ユーザー操作 (Ctrl+C) を検知しました。即時シャットダウンします。")
+    os._exit(0)
+
+signal.signal(signal.SIGINT, emergency_shutdown)
 
 def main():
     logger.info("🚀 【常時知覚サーバー ＆ 自動人物物理PTZ追尾起動】...")
