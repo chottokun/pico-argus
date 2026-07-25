@@ -73,7 +73,6 @@ class PTZController:
         try:
             step_size_x = 0.15
             step_size_y = 0.10
-            wait_time = 1.4
             interrupted = False
 
             # 設定値(tapo_config.json)から中心から端までの最大ステップ数を逆算

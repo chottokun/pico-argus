@@ -6,7 +6,6 @@ from pico.cli.ptz import PTZActuator
 
 import os
 import signal
-import sys
 
 os.makedirs("logs", exist_ok=True)
 log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")

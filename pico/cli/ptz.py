@@ -60,6 +60,7 @@ class PTZActuator:
         logger.info(f"Pulse Move Executed: Requested(pan={pan}, tilt={tilt}) -> Actual(pan={actual_x}, tilt={actual_y})")
         # 非同期送信キューの駆動ラグを考慮して待機
         time.sleep(0.2)
+        return actual_x, actual_y
 
     def emergency_stop(self):
         """物理緊急停止（0.0移動を送信してキュー処理完了を待つ）"""

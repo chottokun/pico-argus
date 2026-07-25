@@ -10,7 +10,7 @@ from pico.mcp.server import handle_list_tools, handle_call_tool
 async def test_handle_list_tools(mock_get_memory, mock_get_ptz, mock_get_perception):
     tools = await handle_list_tools()
     
-    assert len(tools) == 8  # 新規2ツール追加により 8 つ
+    assert len(tools) == 10  # move_camera と conduct_room_survey 追加により 10 個
     tool_names = [t.name for t in tools]
     assert "get_active_tracks" in tool_names
     assert "analyze_crop_image" in tool_names

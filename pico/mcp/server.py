@@ -163,6 +163,26 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="move_camera",
+            description="カメラを任意のアングル方向へ指定した角度（Pan / Tilt 相対移動量）で手動ダイレクト移動・旋回させます。正の値は右/上、負の値は左/下に動きます。",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pan": {"type": "number", "description": "水平旋回量 (-0.96 ～ 0.96。正: 右、負: 左)"},
+                    "tilt": {"type": "number", "description": "垂直旋回量 (-0.89 ～ 0.89。正: 上、負: 下)"}
+                },
+                "required": ["pan", "tilt"]
+            }
+        ),
+        types.Tool(
+            name="conduct_room_survey",
+            description="カメラを全方位（左、中央、右、上）へ自律的に順次旋回させて室内をマルチアングル知覚し、部屋の状況や検出オブジェクトを解析して Obsidian Long-Term Wiki ページに自動記録します。",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        types.Tool(
             name="write_wiki",
             description="新しい観測事実、ユーザー指定ルール、会話インサイト、外部検索結果を OKF 形式 Markdown に書き込み、SQLite インデックスを更新します。",
             inputSchema={
@@ -247,6 +267,52 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=res["response"])]
             else:
                 return [types.TextContent(type="text", text=f"Error: {res.get('message', 'Unknown VLM error')}")]
+
+        elif name == "move_camera":
+            pan = float(arguments.get("pan", 0.0))
+            tilt = float(arguments.get("tilt", 0.0))
+            active_ptz = get_ptz()
+            active_perception = get_perception()
+            active_perception.set_ptz_actuator(active_ptz)
+
+            loop = asyncio.get_running_loop()
+            actual_x, actual_y = await loop.run_in_executor(None, active_ptz.send_pulse_move, pan, tilt)
+            return [types.TextContent(type="text", text=f"Success: カメラをダイレクト物理移動しました (Requested: Pan={pan:+.2f}, Tilt={tilt:+.2f})")]
+
+        elif name == "conduct_room_survey":
+            loop = asyncio.get_running_loop()
+            active_ptz = get_ptz()
+            active_perception = get_perception()
+            active_perception.set_ptz_actuator(active_ptz)
+            active_memory = get_memory()
+
+            def _run_survey():
+                angles = [
+                    ("CENTER (正面・中央)", 0.0, 0.0),
+                    ("LEFT (部屋の左側・書棚/デスク方面)", -0.40, 0.0),
+                    ("RIGHT (部屋の右側・窓/カーテン方面)", +0.80, 0.0),
+                    ("UPPER (天井・上部照明方面)", -0.40, +0.35),
+                ]
+                survey_results = []
+                for n, p, t in angles:
+                    if p != 0.0 or t != 0.0:
+                        active_ptz.send_pulse_move(p, t)
+                        time.sleep(2.0)
+                    status = active_perception.get_perception_status_data()
+                    tracks = status.get("active_tracks", [])
+                    track_summary = [f"- ID {tr.get('track_id')}: クラス={tr.get('class')}, 信頼度={tr.get('confidence', 0):.2f}" for tr in tracks]
+                    obs_text = "\n".join(track_summary) if track_summary else "（このアングルでは顕著な検出オブジェクトなし）"
+                    survey_results.append(f"### 📍 方向アングル: {n}\n\n**検出オブジェクト一覧:**\n{obs_text}\n")
+                
+                active_ptz.send_pulse_move(-0.0, -0.35)  # 中心復帰
+                
+                title = "部屋の全方位環境調査記録_20260725"
+                content = "# 部屋の全方位環境調査記録\n\n- **調査日時**: 2026年7月25日\n- **使用システム**: Pico Cognitive MCP Active Sensing Engine\n\n## 📋 パノラマ全方位調査結果\n\n" + "\n\n".join(survey_results)
+                active_memory.add_document(filepath=f"memory/{title}.md", title=title, content=content, doc_type="survey", aliases=["部屋全方位調査"])
+                return f"Success: 全方位室内パノラマ調査が完了し、Wikiページ '[[{title}]]' に全結果を保存しました！\n\n{content}"
+
+            res_text = await loop.run_in_executor(None, _run_survey)
+            return [types.TextContent(type="text", text=res_text)]
 
         elif name == "set_tracking_target":
             track_id_val = arguments.get("track_id")
