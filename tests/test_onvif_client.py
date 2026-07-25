@@ -121,5 +121,28 @@ def test_ptz_controller_safe_move_with_inversion(mock_onvif_camera) -> None:
 
     # 実際に渡された引数は符号反転しているか
     assert mock_request.Translation == {'PanTilt': {'x': -0.5, 'y': -0.2}}
+    controller.shutdown()
+
+
+def test_ptz_controller_move_to_center(mock_onvif_camera) -> None:
+    mock_cam, mock_ptz, mock_media = mock_onvif_camera
+    mock_request = MagicMock()
+    mock_ptz.create_type.return_value = mock_request
+
+    controller = PTZController(
+        ip="192.168.1.100", user="user", password="pwd",
+        max_limit_x=1.0, max_limit_y=0.5
+    )
+    controller.current_x = 0.4
+    controller.current_y = -0.3
+
+    actual_x, actual_y = controller.move_to_center()
+
+    assert actual_x == pytest.approx(-0.4)
+    assert actual_y == pytest.approx(0.3)
+    assert controller.current_x == pytest.approx(0.0)
+    assert controller.current_y == pytest.approx(0.0)
+    controller.shutdown()
+
 
 

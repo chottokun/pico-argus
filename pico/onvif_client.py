@@ -248,6 +248,10 @@ class PTZController:
             
         return 0.0, 0.0
 
+    def move_to_center(self) -> Tuple[float, float]:
+        """現在の推測位置から原点(0,0)へ復帰移動する。"""
+        return self.safe_move(-self.current_x, -self.current_y)
+
     def shutdown(self) -> None:
         """非同期スレッドを停止し、リソースをクリーンアップする。"""
         self.running = False

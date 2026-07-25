@@ -165,7 +165,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="move_camera",
-            description="カメラを任意のアングル方向へ指定した角度（Pan / Tilt 相対移動量）で手動ダイレクト移動・旋回させます。正の値は右/上、負の値は左/下に動きます。",
+            description="カメラを任意のアングル方向へ指定した角度（Pan / Tilt 相対移動量）で手動ダイレクト移動・旋回させます。pan=0, tilt=0 を指定した場合は正面中心原点(0,0)へ戻ります。",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -173,6 +173,14 @@ async def handle_list_tools() -> list[types.Tool]:
                     "tilt": {"type": "number", "description": "垂直旋回量 (-0.89 ～ 0.89。正: 上、負: 下)"}
                 },
                 "required": ["pan", "tilt"]
+            }
+        ),
+        types.Tool(
+            name="calibrate_home",
+            description="カメラの物理ゼロ点補正（ホームアライメント）を実行します。物理限界への突き当て動作により正確な中心原点(0,0)を再確立します。実行中は約15秒間カメラが大きく動きます。",
+            inputSchema={
+                "type": "object",
+                "properties": {}
             }
         ),
         types.Tool(
@@ -277,8 +285,25 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             active_perception.set_ptz_actuator(active_ptz)
 
             loop = asyncio.get_running_loop()
-            actual_x, actual_y = await loop.run_in_executor(None, active_ptz.send_pulse_move, pan, tilt)
-            return [types.TextContent(type="text", text=f"Success: カメラをダイレクト物理移動しました (Requested: Pan={pan:+.2f}, Tilt={tilt:+.2f})")]
+            if pan == 0.0 and tilt == 0.0:
+                actual_x, actual_y = await loop.run_in_executor(None, active_ptz.move_to_center)
+                return [types.TextContent(type="text", text="Success: カメラを推測中心原点(0.0, 0.0)へ復帰しました。")]
+            else:
+                actual_x, actual_y = await loop.run_in_executor(None, active_ptz.send_pulse_move, pan, tilt)
+                return [types.TextContent(type="text", text=f"Success: カメラをダイレクト物理移動しました (Requested: Pan={pan:+.2f}, Tilt={tilt:+.2f})")]
+
+        elif name == "calibrate_home":
+            active_ptz = get_ptz()
+            active_ptz.stop_lockon()  # 補正中の追尾干渉防止
+            loop = asyncio.get_running_loop()
+            
+            def _run_calib():
+                reader = get_shared_reader()
+                cx, cy = active_ptz.calibrate_home(video_reader=reader)
+                return cx, cy
+
+            cx, cy = await loop.run_in_executor(None, _run_calib)
+            return [types.TextContent(type="text", text=f"Success: カメラの物理ゼロ点補正（ホームアライメント）が完了しました。中心原点 ({cx:.2f}, {cy:.2f}) に再校正完了。")]
 
         elif name == "conduct_room_survey":
             loop = asyncio.get_running_loop()
@@ -291,11 +316,14 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 angles = [
                     ("CENTER (正面・中央)", 0.0, 0.0),
                     ("LEFT (部屋の左側・書棚/デスク方面)", -0.40, 0.0),
-                    ("RIGHT (部屋の右側・窓/カーテン方面)", +0.80, 0.0),
-                    ("UPPER (天井・上部照明方面)", -0.40, +0.35),
+                    ("RIGHT (部屋の右側・窓/カーテン方面)", +0.40, 0.0),
+                    ("UPPER (天井・上部照明方面)", 0.0, +0.35),
                 ]
                 survey_results = []
                 for n, p, t in angles:
+                    # 毎回中心に戻してから指定絶対アングルへ移動
+                    active_ptz.move_to_center()
+                    time.sleep(0.5)
                     if p != 0.0 or t != 0.0:
                         active_ptz.send_pulse_move(p, t)
                         time.sleep(2.0)
@@ -305,7 +333,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     obs_text = "\n".join(track_summary) if track_summary else "（このアングルでは顕著な検出オブジェクトなし）"
                     survey_results.append(f"### 📍 方向アングル: {n}\n\n**検出オブジェクト一覧:**\n{obs_text}\n")
                 
-                active_ptz.send_pulse_move(-0.0, -0.35)  # 中心復帰
+                active_ptz.move_to_center()  # 最終中心復帰
                 
                 title = "部屋の全方位環境調査記録_20260725"
                 content = "# 部屋の全方位環境調査記録\n\n- **調査日時**: 2026年7月25日\n- **使用システム**: Pico Cognitive MCP Active Sensing Engine\n\n## 📋 パノラマ全方位調査結果\n\n" + "\n\n".join(survey_results)

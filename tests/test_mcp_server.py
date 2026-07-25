@@ -10,7 +10,7 @@ from pico.mcp.server import handle_list_tools, handle_call_tool
 async def test_handle_list_tools(mock_get_memory, mock_get_ptz, mock_get_perception):
     tools = await handle_list_tools()
     
-    assert len(tools) == 10  # move_camera と conduct_room_survey 追加により 10 個
+    assert len(tools) == 11  # calibrate_home 追加により 11 個
     tool_names = [t.name for t in tools]
     assert "get_active_tracks" in tool_names
     assert "analyze_crop_image" in tool_names
@@ -20,6 +20,9 @@ async def test_handle_list_tools(mock_get_memory, mock_get_ptz, mock_get_percept
     assert "write_wiki" in tool_names
     assert "get_perception_status" in tool_names
     assert "configure_event_filter" in tool_names
+    assert "move_camera" in tool_names
+    assert "conduct_room_survey" in tool_names
+    assert "calibrate_home" in tool_names
 
 @pytest.mark.anyio
 @patch("pico.mcp.server.get_perception")
@@ -208,3 +211,20 @@ async def test_call_write_wiki_missing_args(mock_get_memory, mock_get_ptz, mock_
     # Assert
     assert len(res) == 1
     assert "Error" in res[0].text
+
+
+@pytest.mark.anyio
+@patch("pico.mcp.server.get_shared_reader")
+@patch("pico.mcp.server.get_ptz")
+async def test_call_calibrate_home(mock_get_ptz, mock_get_reader):
+    mock_ptz = MagicMock()
+    mock_get_ptz.return_value = mock_ptz
+    mock_ptz.calibrate_home.return_value = (0.0, 0.0)
+
+    res = await handle_call_tool("calibrate_home", {})
+
+    assert len(res) == 1
+    assert "ゼロ点補正" in res[0].text
+    mock_ptz.stop_lockon.assert_called_once()
+    mock_ptz.calibrate_home.assert_called_once()
+

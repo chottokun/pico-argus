@@ -40,6 +40,12 @@ def main():
     ptz = PTZActuator(config)
     cli.set_ptz_actuator(ptz)
 
+    # MCP サーバーモジュールとのインスタンス共有（二重生成・位置乖離防止）
+    from pico.mcp import server as mcp_server
+    mcp_server.ptz = ptz
+    mcp_server.perception = cli
+    mcp_server.shared_reader = cli.reader
+
     if config.align_to_home:
         logger.info("🎯 起動時カメラ物理アライメント（原点校正・中心復帰）を実行しています...")
         ptz._init_ptz(video_reader=cli.reader, align=True)

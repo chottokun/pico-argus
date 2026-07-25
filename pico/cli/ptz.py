@@ -62,6 +62,21 @@ class PTZActuator:
         time.sleep(0.2)
         return actual_x, actual_y
 
+    def move_to_center(self):
+        """カメラを推測中心原点(0.0, 0.0)へ復帰させる"""
+        self._init_ptz(align=False)
+        actual_x, actual_y = self.ptz.move_to_center()
+        logger.info(f"Move to Center Executed: Actual(pan={actual_x}, tilt={actual_y}) | Est Pos: ({self.ptz.current_x:.2f}, {self.ptz.current_y:.2f})")
+        time.sleep(0.5)
+        return actual_x, actual_y
+
+    def calibrate_home(self, video_reader=None):
+        """物理限界ブラインド突き当てによるカメラゼロ点補正（ホームアライメント）を明示的に実行する"""
+        self._init_ptz(align=False)
+        self.ptz._align_to_home_position(video_reader=video_reader)
+        logger.info("Explicit Home Alignment (Zero-point calibration) completed successfully.")
+        return self.ptz.current_x, self.ptz.current_y
+
     def emergency_stop(self):
         """物理緊急停止（0.0移動を送信してキュー処理完了を待つ）"""
         self._init_ptz()
