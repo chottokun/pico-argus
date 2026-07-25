@@ -342,7 +342,6 @@ class OnDemandPerceptionCLI:
 
     def get_tracks_data(self) -> List[Dict[str, Any]]:
         """最新の常時追跡オブジェクトメタデータを取得（モック環境等で空なら同期フォールバック）"""
-        self.start_monitor()
         tracks = self.perception_loop.get_cached_tracks()
 
         if not tracks:
@@ -372,7 +371,6 @@ class OnDemandPerceptionCLI:
         print(json.dumps({"tracks": results}, indent=2, ensure_ascii=False))
 
     def get_perception_status_data(self) -> Dict[str, Any]:
-        self.start_monitor()
         return self.perception_loop.get_status()
 
     def configure_event_filter_data(self, cooldown_sec: Optional[float] = None, allowed_classes: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -436,7 +434,6 @@ class OnDemandPerceptionCLI:
         print(json.dumps(res, indent=2, ensure_ascii=False))
 
     def get_live_snapshot_data(self) -> dict:
-        self.start_monitor()
         # RTSP内部バッファの遅延を解消するため最新のフレームまで消化読み込み
         frame = None
         for _ in range(5):
