@@ -136,46 +136,57 @@ class PTZController:
                     else:
                         logger.info(f"Alignment [{phase_name}]: {i+1}/{total_steps}")
 
+            # camera_config.json の MAX_LIMIT_X / MAX_LIMIT_Y から中心→端、および端→端（全幅・全高）の正確なステップ数を計算
+            steps_to_edge_x = int(round(self.max_limit_x / step_size_x))
+            steps_to_edge_y = int(round(self.max_limit_y / step_size_y))
+            full_sweep_x = steps_to_edge_x * 2 + 2
+            full_sweep_y = steps_to_edge_y * 2 + 2
+            hunt_steps_x = max(20, full_sweep_x + 5)
+            hunt_steps_y = max(20, full_sweep_y + 5)
+
+            logger.info(f"Configuration limits from camera_config.json: MAX_LIMIT_X=±{self.max_limit_x:.2f}, MAX_LIMIT_Y=±{self.max_limit_y:.2f}")
+            logger.info(f"Calculated steps: Center-to-Edge (X={steps_to_edge_x}, Y={steps_to_edge_y}) | Full Sweep (X={full_sweep_x}, Y={full_sweep_y})")
+
             # ----------------------------------------------------
-            # 左右・上下の物理限界（両壁）へちゃんと振る「フルスキャン・バックラッシュ相殺アライメント」
+            # camera_config.json の MAX_LIMIT に基づく全幅・全高ダイナミックスキャン
             # ----------------------------------------------------
             # 1. 物理左端へ完全突き当て
-            logger.info(f"PHASE 1: Sweeping to LEFT physical edge ({hunt_steps_x} steps)...")
-            execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Sweeping LEFT edge")
+            logger.info(f"PHASE 1: Hunting LEFT physical edge ({hunt_steps_x} steps)...")
+            execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Hunting LEFT edge")
             time.sleep(0.4)
 
-            # 2. 物理右端へ完全突き当て（全幅確認）
+            # 2. 左端から右端までの【全幅 1.92】(full_sweep_x) を全域ダイナミックスキャン！
             if not interrupted:
-                logger.info(f"PHASE 2: Sweeping to RIGHT physical edge ({hunt_steps_x} steps)...")
-                execute_blind_move(step_size_x, 0.0, hunt_steps_x, "Sweeping RIGHT edge")
+                logger.info(f"PHASE 2: Full Sweep RIGHT ({self.max_limit_x * 2:.2f} range, {full_sweep_x} steps)...")
+                execute_blind_move(step_size_x, 0.0, full_sweep_x, "Full Sweep RIGHT")
                 time.sleep(0.4)
 
             # 3. 物理下端へ完全突き当て
             if not interrupted:
-                logger.info(f"PHASE 3: Sweeping to BOTTOM physical edge ({hunt_steps_y} steps)...")
-                execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Sweeping BOTTOM edge")
+                logger.info(f"PHASE 3: Hunting BOTTOM physical edge ({hunt_steps_y} steps)...")
+                execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Hunting BOTTOM edge")
                 time.sleep(0.4)
 
-            # 4. 物理上端へ完全突き当て（全高確認）
+            # 4. 下端から上端までの【全高 1.70】(full_sweep_y) を全域ダイナミックスキャン！
             if not interrupted:
-                logger.info(f"PHASE 4: Sweeping to TOP physical edge ({hunt_steps_y} steps)...")
-                execute_blind_move(0.0, step_size_y, hunt_steps_y, "Sweeping TOP edge")
+                logger.info(f"PHASE 4: Full Sweep UP ({self.max_limit_y * 2:.2f} range, {full_sweep_y} steps)...")
+                execute_blind_move(0.0, step_size_y, full_sweep_y, "Full Sweep UP")
                 time.sleep(0.4)
 
-            # 5. バックラッシュ(ギア遊び)を完全相殺するため、左下物理基準点へ突き当てて一方向運動に揃える
+            # 5. バックラッシュ(ギア遊び)を完全相殺するため、左下物理基準点へ突き当て
             if not interrupted:
-                logger.info(f"PHASE 5: Resetting to LEFT-BOTTOM physical corner for zero-backlash...")
+                logger.info("PHASE 5: Resetting to LEFT-BOTTOM physical corner for zero-backlash...")
                 execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Resetting LEFT for Backlash cancel")
                 time.sleep(0.4)
                 execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Resetting BOTTOM for Backlash cancel")
                 time.sleep(0.5)
 
-            # 6. 左下物理基準点から、正確に実測総幅の半分 (右へ7歩 / 上へ10歩) だけ移動して【真の中心原点】へ着地
+            # 6. 左下物理基準点から、camera_config.json の MAX_LIMIT (X=+0.96, Y=+0.85) 分だけ正確に復帰して【真の中心原点】へ着地！
             if not interrupted:
-                logger.info(f"PHASE 6: Returning to EXACT CENTER from corner in {max_steps_x} steps RIGHT, {max_steps_y} steps UP...")
-                execute_blind_move(step_size_x, 0.0, max_steps_x, "Returning RIGHT to Center X")
+                logger.info(f"PHASE 6: Returning to EXACT CENTER from corner (X={steps_to_edge_x} steps RIGHT, Y={steps_to_edge_y} steps UP)...")
+                execute_blind_move(step_size_x, 0.0, steps_to_edge_x, "Returning RIGHT to Center X")
                 time.sleep(0.3)
-                execute_blind_move(0.0, step_size_y, max_steps_y, "Returning UP to Center Y")
+                execute_blind_move(0.0, step_size_y, steps_to_edge_y, "Returning UP to Center Y")
                 time.sleep(0.4)
 
             self.current_x = 0.0
