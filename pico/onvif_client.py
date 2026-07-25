@@ -109,8 +109,8 @@ class PTZController:
                     request.Translation = {'PanTilt': {'x': dx, 'y': dy}}
                     self.ptz.RelativeMove(request)
 
-                    # 物理駆動ラグ待機
-                    time.sleep(wait_time if video_reader is not None else 0.18)
+                    # 物理駆動ラグ待機 (0.08s へ高速化)
+                    time.sleep(0.08 if video_reader is not None else 0.08)
 
                     # モニター表示 & キーキャンセル監視
                     if video_reader is not None:
