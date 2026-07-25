@@ -53,8 +53,8 @@ class PTZActuator:
             )
 
     def send_pulse_move(self, pan: float, tilt: float):
-        """指定したパン・チルト量で安全クランプを適用してカメラを動かす"""
-        self._init_ptz()
+        """指定したパン・チルト量で安全クランプを適用してカメラを動かす（アライメント割り込みなし）"""
+        self._init_ptz(align=False)
         # safe_move は指定量 requested_x, requested_y を現在位置に足してクランプしたのち送信する
         actual_x, actual_y = self.ptz.safe_move(pan, tilt)
         logger.info(f"Pulse Move Executed: Requested(pan={pan}, tilt={tilt}) -> Actual(pan={actual_x}, tilt={actual_y})")

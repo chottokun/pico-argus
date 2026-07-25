@@ -55,6 +55,7 @@ def get_ptz():
     global ptz
     if ptz is None:
         ptz = PTZActuator(get_config())
+        ptz._init_ptz(video_reader=get_shared_reader(), align=False)
     return ptz
 
 def get_memory():
