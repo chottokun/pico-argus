@@ -70,8 +70,8 @@ def get_perception():
         perception = OnDemandPerceptionCLI(get_config(), shared_reader=get_shared_reader())
         ptz_inst = get_ptz()
         perception.set_ptz_actuator(ptz_inst)
-        # デフォルト追尾ターゲットとして "person" (人) を自動セット
-        ptz_inst.start_lockon(class_filter="person")
+        # 指示がない限り自動追尾は開始せず、正面中心(0,0)で静止保持
+        # ptz_inst.start_lockon(class_filter="person")
     return perception
 
 def get_yolo_semaphore():

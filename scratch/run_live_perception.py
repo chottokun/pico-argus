@@ -53,8 +53,8 @@ def main():
     logger.info("📺 モニターウィンドウ (Cognitive Surveillance Monitor) を起動しました。")
     logger.info("🎯 人物 (class_filter='person') に対する自動物理PTZロックオン追尾を開始します。")
 
-    # 人物自動物理ロックオン追尾の開始 (常時知覚ループ内で安全に滑らか駆動)
-    ptz.start_lockon(class_filter="person")
+    # 起動時は自動追尾を発動せず、正面原点(0,0)で静止保持（指示があった場合のみMCP/CLI経由で追尾開始）
+    # ptz.start_lockon(class_filter="person")
 
     try:
         count = 0
