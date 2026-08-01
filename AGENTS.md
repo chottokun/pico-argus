@@ -42,3 +42,16 @@ Task is complete only when all Security Checks and Tests pass, dependencies are 
 4. 公式ドキュメント
 
 docs/, README.mdは必要な場合には更新し最新の情報とすること
+
+## Knowledge Rules: 
+
+本プロジェクトのナレッジは Docs/ 配下で管理します。記憶のみで回答せず、必ず .agents\skills\llm-wiki-docs\SKILL.md をロードして指示に従ってください。
+
+Immutable Raw: Docs/raw/ 内のソースファイルは編集・上書き・削除を厳禁とします。
+
+役割の割り切り
+AGENTS.md の役割（When / Where）:
+「ナレッジは Docs/ にある」「手順は SKILL.md を見よ」という存在と制約の宣言のみを行う。  
+
+SKILL.md の役割（How）:
+Docs/index.md の読み方、sources フロントマターの書き方、log.md の更新方法など、具体的な処理アルゴリズムをすべて記述する。
