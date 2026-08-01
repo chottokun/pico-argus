@@ -1,8 +1,10 @@
+---
 type: Index
 title: Domain Knowledge Index
 description: Pico-Argus システムのドメインロジック・ユースケース・メモリ仕様インデックス
 status: active
 timestamp: 2026-08-01T10:30:00+09:00
+---
 
 # Domain Knowledge Index
 
