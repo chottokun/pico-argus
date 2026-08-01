@@ -1,8 +1,10 @@
+---
 type: Index
 title: Architecture Index
 description: Pico-Argus システムのアーキテクチャ・設計仕様インデックス
 status: active
 timestamp: 2026-08-01T10:30:00+09:00
+---
 
 # Architecture Knowledge Index
 
