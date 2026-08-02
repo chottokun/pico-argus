@@ -67,7 +67,10 @@ def get_memory():
 def get_perception():
     global perception
     if perception is None:
-        perception = OnDemandPerceptionCLI(get_config(), shared_reader=get_shared_reader())
+        conf = get_config()
+        # MCPサーバー経由での呼び出し時は、ユーザーのメインスクリプト画面と重複しないようGUIモニターの自動生成を無効化
+        conf.show_monitor = False
+        perception = OnDemandPerceptionCLI(conf, shared_reader=get_shared_reader())
         ptz_inst = get_ptz()
         perception.set_ptz_actuator(ptz_inst)
         # 指示がない限り自動追尾は開始せず、正面中心(0,0)で静止保持
@@ -298,12 +301,23 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             loop = asyncio.get_running_loop()
             
             def _run_calib():
-                reader = get_shared_reader()
-                cx, cy = active_ptz.calibrate_home(video_reader=reader)
+                cx, cy = active_ptz.calibrate_home(video_reader=None)
                 return cx, cy
 
             cx, cy = await loop.run_in_executor(None, _run_calib)
             return [types.TextContent(type="text", text=f"Success: カメラの物理ゼロ点補正（ホームアライメント）が完了しました。中心原点 ({cx:.2f}, {cy:.2f}) に再校正完了。")]
+
+        elif name == "move_camera":
+            pan = float(arguments.get("pan", 0.0))
+            tilt = float(arguments.get("tilt", 0.0))
+            active_ptz = get_ptz()
+            
+            if pan == 0.0 and tilt == 0.0:
+                actual_x, actual_y = active_ptz.move_to_center()
+                return [types.TextContent(type="text", text=f"Success: カメラを中心原点 (0,0) へ復帰移動しました (Actual: Pan={actual_x:+.2f}, Tilt={actual_y:+.2f})")]
+            else:
+                actual_x, actual_y = active_ptz.send_pulse_move(pan, tilt)
+                return [types.TextContent(type="text", text=f"Success: カメラをダイレクト物理移動しました (Requested: Pan={pan:+.2f}, Tilt={tilt:+.2f} -> Actual: Pan={actual_x:+.2f}, Tilt={actual_y:+.2f})")]
 
         elif name == "conduct_room_survey":
             loop = asyncio.get_running_loop()
@@ -315,9 +329,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             def _run_survey():
                 angles = [
                     ("CENTER (正面・中央)", 0.0, 0.0),
-                    ("LEFT (部屋の左側・書棚/デスク方面)", -0.40, 0.0),
-                    ("RIGHT (部屋の右側・窓/カーテン方面)", +0.40, 0.0),
-                    ("UPPER (天井・上部照明方面)", 0.0, +0.35),
+                    ("LEFT (部屋の左側・書棚/デスク方面)", -0.85, 0.0),
+                    ("RIGHT (部屋の右側・窓/カーテン方面)", +0.85, 0.0),
+                    ("UPPER (天井・上部照明方面)", 0.0, +0.60),
                 ]
                 survey_results = []
                 for n, p, t in angles:
@@ -326,7 +340,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     time.sleep(0.5)
                     if p != 0.0 or t != 0.0:
                         active_ptz.send_pulse_move(p, t)
-                        time.sleep(2.0)
+                        time.sleep(3.0)
                     status = active_perception.get_perception_status_data()
                     tracks = status.get("active_tracks", [])
                     track_summary = [f"- ID {tr.get('track_id')}: クラス={tr.get('class')}, 信頼度={tr.get('confidence', 0):.2f}" for tr in tracks]
@@ -334,10 +348,16 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     survey_results.append(f"### 📍 方向アングル: {n}\n\n**検出オブジェクト一覧:**\n{obs_text}\n")
                 
                 active_ptz.move_to_center()  # 最終中心復帰
+                if hasattr(active_ptz, "ptz") and active_ptz.ptz:
+                    active_ptz.ptz.current_x = 0.0
+                    active_ptz.ptz.current_y = 0.0
                 
-                title = "部屋の全方位環境調査記録_20260725"
-                content = "# 部屋の全方位環境調査記録\n\n- **調査日時**: 2026年7月25日\n- **使用システム**: Pico Cognitive MCP Active Sensing Engine\n\n## 📋 パノラマ全方位調査結果\n\n" + "\n\n".join(survey_results)
-                active_memory.write_knowledge_data(filepath=f"memory/{title}.md", title=title, content=content, tags="survey", aliases=["部屋全方位調査"])
+                date_str = time.strftime("%Y%m%d")
+                now_str = time.strftime("%Y年%m月%d日 %H:%M")
+                title = f"部屋の全方位環境調査記録_{date_str}"
+                content = f"# 部屋の全方位環境調査記録\n\n- **調査日時**: {now_str}\n- **使用システム**: Pico Cognitive MCP Active Sensing Engine\n\n## 📋 パノラマ全方位調査結果\n\n" + "\n\n".join(survey_results)
+                
+                active_memory.write_knowledge_data(filepath=f"wiki/{title}.md", title=title, content=content, tags="survey", aliases=["部屋全方位調査"])
                 return f"Success: 全方位室内パノラマ調査が完了し、Wikiページ '[[{title}]]' に全結果を保存しました！\n\n{content}"
 
             res_text = await loop.run_in_executor(None, _run_survey)
