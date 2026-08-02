@@ -1,3 +1,4 @@
+import os
 import threading
 import queue
 import time
@@ -84,95 +85,88 @@ class PTZController:
         self.worker_thread.start()
 
     def _align_to_home_position(self, video_reader: Optional[RTSPVideoReader] = None) -> None:
-        """物理限界へのブラインド突き当てを行い、camera_config.jsonの限界ステップ数に基づき中心へ復帰する高速・ロバストなアライメント。"""
-        logger.info("Starting startup Blind Physical Home Alignment...")
+        """起動時のアライメント処理。calibrate_home を直接呼び出して100%同一のアライメントを実行する。"""
+        self.calibrate_home(video_reader=video_reader)
+
+    def calibrate_home(self, video_reader: Optional[RTSPVideoReader] = None) -> Tuple[float, float]:
+        """物理限界へのブラインド突き当てを行い、カメラの真の中心原点(0.0, 0.0)に再校正・復帰するアライメント。"""
+        logger.info("Starting Physical Home Alignment (calibrate_home)...")
         try:
             step_size_x = self.step_size_x
             step_size_y = self.step_size_y
             interrupted = False
 
-            max_steps_x = self.return_steps_x
-            max_steps_y = self.return_steps_y
-            hunt_steps_x = self.hunt_steps_x
-            hunt_steps_y = self.hunt_steps_y
-
-            logger.info(f"Configuration limits: self.max_limit_x={self.max_limit_x}, self.max_limit_y={self.max_limit_y}")
-            logger.info(f"Return steps: Center-to-Edge X={max_steps_x}, Y={max_steps_y} (step_size: X={step_size_x}, Y={step_size_y})")
-            logger.info(f"Blind hunting steps to corner: X={hunt_steps_x} (LEFT), Y={hunt_steps_y} (BOTTOM)")
+            steps_to_center_x = getattr(self, "return_steps_x", 7)
+            steps_to_center_y = getattr(self, "return_steps_y", 11)
 
             # ----------------------------------------------------
-            # 補助関数：指定歩数だけカメラを駆動させ、プレビューとキー中断を処理する
+            # 🎯 ビジュアルモーションモニタリング付き 4方向アライメント (ゆったり1.2秒待機)
             # ----------------------------------------------------
-            def execute_blind_move(dx: float, dy: float, total_steps: int, phase_name: str) -> None:
+            def move_and_monitor(cmd_x: float, cmd_y: float, steps: int, phase_name: str) -> None:
                 nonlocal interrupted
-                for i in range(total_steps):
+                def extract_frame():
+                    if video_reader is None:
+                        return None
+                    if hasattr(video_reader, "get_latest_frame"):
+                        return video_reader.get_latest_frame()
+                    if hasattr(video_reader, "read"):
+                        return video_reader.read()[1]
+                    return None
+
+                for i in range(steps):
                     if interrupted:
                         break
-
-                    # 物理カメラの運動極性(invert_pan / invert_tilt)を反映してコマンド生成
-                    # Raw ONVIF仕様 (invert_pan: True): dx < 0 (物理左) -> Raw ONVIF +0.15, dx > 0 (物理右) -> Raw ONVIF -0.15
-                    # Raw ONVIF仕様 (invert_tilt: True): dy < 0 (物理下) -> Raw ONVIF -0.10, dy > 0 (物理上) -> Raw ONVIF +0.10
-                    cmd_x = -dx if self.invert_pan else dx
-                    cmd_y = dy if self.invert_tilt else -dy
-
-                    # コマンド送信
-                    request = self.ptz.create_type('RelativeMove')
-                    request.ProfileToken = self.profile_token
-                    request.Translation = {'PanTilt': {'x': cmd_x, 'y': cmd_y}}
-                    self.ptz.RelativeMove(request)
-
-                    # 物理駆動ラグ待機 (物理モーターが確実に1ステップ回転する0.22秒に設定)
-                    time.sleep(0.22)
-
-                    # モニター表示 & キーキャンセル監視
-                    if video_reader is not None:
-                        ret, frame = video_reader.read()
-                        if ret and frame is not None:
-                            disp = frame.copy()
-                            cv2.putText(disp, f"ALIGN: {phase_name} ({i+1}/{total_steps})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                            cv2.putText(disp, "Press [c] or [ESC] to Skip", (30, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                            cv2.imshow("Cognitive Surveillance Monitor", disp)
-                            
-                            key = cv2.waitKey(1) & 0xFF
-                            if key in (ord('c'), 27):
-                                logger.warning(f"⚠️ [{phase_name}] Cancelled by user key event.")
-                                interrupted = True
-                                break
+                    prev_frame = extract_frame()
+                    
+                    req = self.ptz.create_type('RelativeMove')
+                    req.ProfileToken = self.profile_token
+                    req.Translation = {'PanTilt': {'x': cmd_x, 'y': cmd_y}}
+                    self.ptz.RelativeMove(req)
+                    time.sleep(1.2)  # RTSP駆動およびSOAPバッファ消化のゆったり確実な待機 (1.2秒)
+                    
+                    curr_frame = extract_frame()
+                    if prev_frame is not None and curr_frame is not None:
+                        try:
+                            g1 = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+                            g2 = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
+                            diff = cv2.absdiff(g1, g2)
+                            _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+                            motion_ratio = (cv2.countNonZero(thresh) / (thresh.shape[0] * thresh.shape[1])) * 100.0
+                            status = "MOVED ✅" if motion_ratio >= 0.8 else "WALL/STOP 🛑"
+                            logger.info(f"[{phase_name}] Step {i+1}/{steps} -> {status} (Visual Motion: {motion_ratio:.2f}%)")
+                        except Exception:
+                            logger.info(f"[{phase_name}] Step {i+1}/{steps}")
                     else:
-                        logger.info(f"Alignment [{phase_name}]: {i+1}/{total_steps}")
+                        logger.info(f"[{phase_name}] Step {i+1}/{steps}")
 
-            # camera_config.json の実測データ (TOTAL_STEPS_X: 15, TOTAL_STEPS_Y: 20) を直接活用
-            total_sweep_x = getattr(self, "total_steps_x", 15)
-            total_sweep_y = getattr(self, "total_steps_y", 20)
-            steps_to_center_x = getattr(self, "return_steps_x", total_sweep_x // 2)
-            steps_to_center_y = getattr(self, "return_steps_y", total_sweep_y // 2)
-            hunt_steps_x = max(20, total_sweep_x + 5)
-            hunt_steps_y = max(20, total_sweep_y + 5)
+            # 1. 右の物理限界壁へ移動 (右端突き当て: ONVIF +0.15)
+            logger.info("PHASE 1-A: Resetting to RIGHT physical edge...")
+            move_and_monitor(+step_size_x, 0.0, 15, "PHASE 1-A (Right)")
 
-            logger.info(f"Configuration limits from camera_config.json: MAX_LIMIT_X=±{self.max_limit_x:.2f}, MAX_LIMIT_Y=±{self.max_limit_y:.2f}")
-            logger.info(f"Calibrated Steps: Full Sweep (X={total_sweep_x}, Y={total_sweep_y}) | Center Return (X={steps_to_center_x}, Y={steps_to_center_y})")
-
-            # ----------------------------------------------------
-            # calibrate_tapo.py と 100% 同一の証明済み黄金アライメント
-            # ----------------------------------------------------
-            # 1. 物理左端へ完全突き当て (左壁)
-            logger.info("PHASE 1: Resetting to LEFT physical edge...")
-            execute_blind_move(-step_size_x, 0.0, hunt_steps_x, "Resetting to LEFT edge")
-            time.sleep(0.5)
-
-            # 2. 物理下端へ完全突き当て (下壁)
+            # 2. 下の物理限界壁へ移動 (下端突き当て: ONVIF -0.10)
             if not interrupted:
-                logger.info("PHASE 2: Resetting to BOTTOM physical edge...")
-                execute_blind_move(0.0, -step_size_y, hunt_steps_y, "Resetting to BOTTOM edge")
-                time.sleep(0.6)
+                logger.info("PHASE 1-B: Resetting to BOTTOM physical edge...")
+                move_and_monitor(0.0, -step_size_y, 15, "PHASE 1-B (Bottom)")
 
-            # 3. 左下物理基準点から、calibrate_tapo.py 実測の中央歩数 (右へ7歩 / 上へ10歩) だけ正確に一方向移動して【真の中心原点】へ完全着地！
+            # 3. 左の物理限界壁へ移動 (左端突き当て: ONVIF -0.15)
             if not interrupted:
-                logger.info(f"PHASE 3: Returning to EXACT CENTER from corner (X={steps_to_center_x} steps RIGHT, Y={steps_to_center_y} steps UP)...")
-                execute_blind_move(step_size_x, 0.0, steps_to_center_x, "Returning RIGHT to Center X")
-                time.sleep(0.4)
-                execute_blind_move(0.0, step_size_y, steps_to_center_y, "Returning UP to Center Y")
-                time.sleep(0.5)
+                logger.info("PHASE 2-A: Resetting to LEFT physical edge...")
+                move_and_monitor(-step_size_x, 0.0, 15, "PHASE 2-A (Left)")
+
+            # 4. 上の物理限界壁へ移動 (上端突き当て: ONVIF +0.10)
+            if not interrupted:
+                logger.info("PHASE 2-B: Resetting to TOP physical edge...")
+                move_and_monitor(0.0, +step_size_y, 15, "PHASE 2-B (Top)")
+
+            # 5. 左端から【右(RIGHT)】へ 7歩 移動 (ONVIF +0.15 で右へ)
+            if not interrupted:
+                logger.info(f"PHASE 3-A: Returning RIGHT to Center X ({steps_to_center_x} steps)...")
+                move_and_monitor(+step_size_x, 0.0, steps_to_center_x, "PHASE 3-A (Return Right)")
+
+            # 6. 上端から【下(DOWN)】へ重力を利用して 10歩 降りて精密中央着地 (ONVIF -0.10 で下へ)
+            if not interrupted:
+                logger.info(f"PHASE 3-B: Descending DOWN to Center Y ({steps_to_center_y} steps)...")
+                move_and_monitor(0.0, -step_size_y, steps_to_center_y, "PHASE 3-B (Descend Down)")
 
             self.current_x = 0.0
             self.current_y = 0.0
@@ -247,8 +241,8 @@ class PTZController:
             cmd_x = -actual_move_x if self.invert_pan else actual_move_x
             cmd_y = -actual_move_y if self.invert_tilt else actual_move_y
             self.relative_move(cmd_x, cmd_y)
-            self.current_x += actual_move_x
-            self.current_y += actual_move_y
+            self.current_x = max(-self.max_limit_x, min(self.max_limit_x, self.current_x + actual_move_x))
+            self.current_y = max(-self.max_limit_y, min(self.max_limit_y, self.current_y + actual_move_y))
             logger.info(
                 f"PTZ Safe Move: x={actual_move_x:+.3f}, y={actual_move_y:+.3f} (cmd_x={cmd_x:+.3f}, cmd_y={cmd_y:+.3f}) | "
                 f"Estimated Pos: X={self.current_x:+.2f}, Y={self.current_y:+.2f}"
@@ -259,7 +253,10 @@ class PTZController:
 
     def move_to_center(self) -> Tuple[float, float]:
         """現在の推測位置から原点(0,0)へ復帰移動する。"""
-        return self.safe_move(-self.current_x, -self.current_y)
+        res = self.safe_move(-self.current_x, -self.current_y)
+        self.current_x = 0.0
+        self.current_y = 0.0
+        return res
 
     def shutdown(self) -> None:
         """非同期スレッドを停止し、リソースをクリーンアップする。"""

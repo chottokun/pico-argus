@@ -37,7 +37,7 @@ def test_app_config_loads_env_and_defaults(monkeypatch) -> None:
             assert config.ollama_base_url == "http://localhost:11434"  # デフォルト値
             assert config.ollama_model == "gemma4:e2b"  # デフォルトで最軽量
             assert config.ollama_max_rpm == 12  # デフォルト推奨値
-            assert config.cognition_target_rule == "a person wearing a hat"  # デフォルト値
+            assert config.cognition_target_rule == "person"  # デフォルト値
             assert config.max_limit_x == 1.15
             assert config.max_limit_y == 0.90
             assert config.invert_pan is True

@@ -12,9 +12,9 @@ class AdaptivePIDController:
     """
 
     def __init__(
-        self, kp_base: float = 0.5, ki: float = 0.05, kd: float = 0.01,
-        dead_zone: float = 0.03, min_speed: float = 0.04, max_step: float = 0.12,
-        integral_limit: float = 0.30, alpha: float = 2.5, max_acceleration: float = 0.04
+        self, kp_base: float = 0.35, ki: float = 0.03, kd: float = 0.01,
+        dead_zone: float = 0.01, min_speed: float = 0.04, max_step: float = 0.06,
+        integral_limit: float = 0.15, alpha: float = 2.0, max_acceleration: float = 0.04
     ) -> None:
         self.kp_base: float = kp_base
         self.ki: float = ki
@@ -48,15 +48,18 @@ class AdaptivePIDController:
         Returns:
             Tuple[float, float]: 算出されたX軸、Y軸の相対移動量 (dx, dy)。
         """
-        # 画角中心(0.5, 0.5)からの偏差
-        error_x = target_cx - 0.5
-        error_y = target_cy - 0.5
+        # 画角中心(0.5, 0.5)からの偏差 (X軸・Y軸ともに 0.5 - pos でターゲットを画面中央へ正しく手繰り寄せる)
+        error_x = 0.5 - target_cx
+        error_y = 0.5 - target_cy
 
-        # 1. 不感帯（Dead Zone）判定
-        if abs(error_x) < self.dead_zone:
+        # 1. 不感帯（Dead Zone）判定: 上下Y軸は追従死を防ぐため 0.008 の超高感度に絞り込む
+        dead_zone_x = 0.015
+        dead_zone_y = 0.008
+
+        if abs(error_x) < dead_zone_x:
             error_x = 0.0
             self.integral_x = 0.0
-        if abs(error_y) < self.dead_zone:
+        if abs(error_y) < dead_zone_y:
             error_y = 0.0
             self.integral_y = 0.0
 
@@ -88,16 +91,17 @@ class AdaptivePIDController:
             dy = (kp_y * error_y) + (self.ki * self.integral_y) + (self.kd * diff_y)
 
             # 6. 静止摩擦・物理重力突破（Minimum Speed Boost）処理
-            # チルト軸はレンズユニットの自重持ち上げ抵抗があるため min_speed_y を 0.08 に強化
-            min_speed_y = max(0.08, self.min_speed * 2.0)
-            if 0.0 < abs(dx) < self.min_speed:
+            # ターゲットが静止・中心付近(error < 0.08)に居る場合は強制ブーストを行わず、カメラを静止安定保持させる
+            min_speed_y = max(0.06, self.min_speed * 1.5)
+            if abs(error_x) > 0.08 and 0.0 < abs(dx) < self.min_speed:
                 dx = np.sign(dx) * self.min_speed
-            if 0.0 < abs(dy) < min_speed_y:
+            if abs(error_y) > 0.08 and 0.0 < abs(dy) < min_speed_y:
                 dy = np.sign(dy) * min_speed_y
 
-            # 7. 最大ステップ幅制限（クリッピング）
+            # 7. 最大ステップ幅制限（クリッピング: 上下Y軸は過剰な高低振れを防ぐため 0.07 にコンパクト制限）
+            max_step_y = 0.07
             dx = max(-self.max_step, min(self.max_step, dx))
-            dy = max(-self.max_step, min(self.max_step, dy))
+            dy = max(-max_step_y, min(max_step_y, dy))
 
             # 状態変数の更新
             self.prev_error_x = error_x

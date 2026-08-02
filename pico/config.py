@@ -39,7 +39,7 @@ class AppConfig:
         self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
         self.ollama_max_rpm: int = int(os.getenv("OLLAMA_MAX_RPM", str(DEFAULT_OLLAMA_MAX_RPM)))
-        self.cognition_target_rule: str = os.getenv("TAPO_COGNITION_TARGET_RULE", "a person wearing a hat")
+        self.cognition_target_rule: str = os.getenv("TAPO_COGNITION_TARGET_RULE", "person")
 
         # 起動時アライメント設定 (デフォルト True、"false", "no", "0" で無効化)
         align_env = os.getenv("TAPO_ALIGN_TO_HOME", "true").lower()
