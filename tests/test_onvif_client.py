@@ -145,4 +145,63 @@ def test_ptz_controller_move_to_center(mock_onvif_camera) -> None:
     controller.shutdown()
 
 
+def test_ptz_controller_continuous_move_and_stop(mock_onvif_camera) -> None:
+    mock_cam, mock_ptz, mock_media = mock_onvif_camera
+    mock_request = MagicMock()
+    mock_ptz.create_type.return_value = mock_request
+
+    controller = PTZController(ip="192.168.1.100", user="user", password="pwd")
+
+    # 連続移動の実行
+    controller.move_continuous(pan_speed=0.5, tilt_speed=-0.2, zoom_speed=0.0, auto_stop_delay=1.0)
+
+    # create_type と ContinuousMove の呼び出し検証
+    mock_ptz.create_type.assert_any_call("ContinuousMove")
+    mock_ptz.ContinuousMove.assert_called_once_with(mock_request)
+    assert mock_request.ProfileToken == "profile_token_123"
+    assert mock_request.Velocity == {
+        'PanTilt': {'x': 0.5, 'y': -0.2},
+        'Zoom': {'x': 0.0}
+    }
+    assert mock_request.Timeout == "PT1S"
+    assert controller._watchdog_timer is not None
+
+    # 明示的な stop() の呼び出し
+    mock_stop_request = MagicMock()
+    mock_ptz.create_type.return_value = mock_stop_request
+
+    controller.stop()
+
+    mock_ptz.create_type.assert_any_call("Stop")
+    mock_ptz.Stop.assert_called_once_with(mock_stop_request)
+    assert mock_stop_request.ProfileToken == "profile_token_123"
+    assert mock_stop_request.PanTilt is True
+    assert mock_stop_request.Zoom is True
+    assert controller._watchdog_timer is None
+
+    controller.shutdown()
+
+
+def test_ptz_controller_watchdog_fallback(mock_onvif_camera) -> None:
+    mock_cam, mock_ptz, mock_media = mock_onvif_camera
+    mock_request = MagicMock()
+    mock_ptz.create_type.return_value = mock_request
+
+    controller = PTZController(ip="192.168.1.100", user="user", password="pwd")
+
+    # 連続移動の実行
+    mock_ptz.ContinuousMove.reset_mock()
+    mock_ptz.Stop.reset_mock()
+
+    # タイムアウト 0.1 秒に指定して 0.6 秒後に watchdog_stop_fallback が呼ばれるようにする
+    controller.move_continuous(pan_speed=0.5, tilt_speed=-0.2, zoom_speed=0.0, auto_stop_delay=0.1)
+
+    # watchdog が発火するまで待機 (0.1秒 + 0.5秒 + α)
+    time.sleep(0.8)
+
+    # Stop コマンドが watchdog fallback により自動で送信されたことを確認
+    mock_ptz.Stop.assert_called_once()
+    assert controller._watchdog_timer is None
+
+    controller.shutdown()
 

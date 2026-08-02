@@ -96,3 +96,48 @@ def test_malformed_markdown_resilience(temp_db):
         assert "観測記録" in updated_text
 
     cli.close()
+
+
+def test_atomic_memory_write_concurrency(temp_db) -> None:
+    """複数のスレッドから同時に同一のMarkdownファイルに書き込みを行ってもデータ破壊が起きないことを検証するテスト"""
+    import threading
+    cli = SQLiteMemoryCLI(db_path=temp_db)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        target_file = os.path.join(temp_dir, "concurrent_test.md")
+        num_threads = 5
+        threads = []
+        errors = []
+
+        def worker(thread_idx: int) -> None:
+            try:
+                # 各スレッドが異なる内容を順次書き込み（または追記）
+                res = cli.write_knowledge_data(
+                    filepath=target_file,
+                    title="Concurrent Title",
+                    content=f"Thread-{thread_idx} data payload",
+                    tags="concurrent"
+                )
+                assert res["status"] == "success"
+            except Exception as e:
+                errors.append(e)
+
+        for i in range(num_threads):
+            t = threading.Thread(target=worker, args=(i,))
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"Concurrency errors occurred: {errors}"
+
+        # 最終的なファイルの内容が、破損せずに正常な構造を維持しているか確認
+        with open(target_file, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        assert "Concurrent Title" in content
+        # いずれかのスレッドの書き込みが正常に含まれている
+        assert any(f"Thread-{i} data payload" in content for i in range(num_threads))
+
+    cli.close()

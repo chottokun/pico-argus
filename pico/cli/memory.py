@@ -38,47 +38,78 @@ class SQLiteMemoryCLI:
         """新しい記憶を OKF 形式 Markdown に書き込みインデックスを更新して結果を辞書で返却"""
         # OKF Frontmatter を付与したコンテンツの構築
         from datetime import datetime
+        import tempfile
         timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        existing_content = ""
-        if os.path.exists(filepath):
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    existing_content = f.read()
-            except Exception:
-                pass
-
-        alias_str = ", ".join(aliases) if aliases else ""
-
-        if existing_content:
-            parts = existing_content.split("---\n")
-            if len(parts) >= 3:
-                frontmatter = parts[1]
-                body = "---\n".join(parts[2:])
-                updated_body = body.strip() + f"\n\n### 🕒 観測記録: {timestamp_str}\n{content}"
-                okf_content = f"---\n{frontmatter}---\n\n{updated_body}"
-            else:
-                okf_content = existing_content.strip() + f"\n\n---\n### 🕒 観測記録: {timestamp_str}\n{content}"
-        else:
-            aliases_fm = f"aliases: [{alias_str}]\n" if alias_str else ""
-            okf_content = (
-                f"---\n"
-                f"title: {title}\n"
-                f"tags: {tags}\n"
-                f"{aliases_fm}"
-                f"doc_type: knowledge\n"
-                f"provenance_source: CLI memory write\n"
-                f"provenance_confidence: High\n"
-                f"---\n\n"
-                f"### 🕒 観測記録: {timestamp_str}\n{content}"
-            )
 
         dir_name = os.path.dirname(filepath)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
-            
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(okf_content)
+        else:
+            dir_name = "."
+
+        lock_file_path = filepath + ".lock"
+        okf_content = ""
+
+        # ロックファイルによる排他制御
+        with open(lock_file_path, "w", encoding="utf-8") as lock_file:
+            try:
+                import fcntl
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+            except (ImportError, AttributeError):
+                pass
+
+            try:
+                existing_content = ""
+                if os.path.exists(filepath):
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            existing_content = f.read()
+                    except Exception:
+                        pass
+
+                alias_str = ", ".join(aliases) if aliases else ""
+
+                if existing_content:
+                    parts = existing_content.split("---\n")
+                    if len(parts) >= 3:
+                        frontmatter = parts[1]
+                        body = "---\n".join(parts[2:])
+                        updated_body = body.strip() + f"\n\n### 🕒 観測記録: {timestamp_str}\n{content}"
+                        okf_content = f"---\n{frontmatter}---\n\n{updated_body}"
+                    else:
+                        okf_content = existing_content.strip() + f"\n\n---\n### 🕒 観測記録: {timestamp_str}\n{content}"
+                else:
+                    aliases_fm = f"aliases: [{alias_str}]\n" if alias_str else ""
+                    okf_content = (
+                        f"---\n"
+                        f"title: {title}\n"
+                        f"tags: {tags}\n"
+                        f"{aliases_fm}"
+                        f"doc_type: knowledge\n"
+                        f"provenance_source: CLI memory write\n"
+                        f"provenance_confidence: High\n"
+                        f"---\n\n"
+                        f"### 🕒 観測記録: {timestamp_str}\n{content}"
+                    )
+
+                # 一時ファイルへ書き込み、ディスク完全同期してアトミックに置換
+                with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as tf:
+                    temp_name = tf.name
+                    tf.write(okf_content)
+                    tf.flush()
+                    try:
+                        os.fsync(tf.fileno())
+                    except OSError:
+                        pass
+
+                os.replace(temp_name, filepath)
+
+            finally:
+                try:
+                    import fcntl
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
+                except (ImportError, AttributeError):
+                    pass
 
         self.store.add_entry(
             filepath=filepath,

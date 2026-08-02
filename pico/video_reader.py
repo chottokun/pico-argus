@@ -33,6 +33,9 @@ class RTSPVideoReader:
             self.cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
             # 内部バッファサイズを最小1に設定（遅延・スタック防止）
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            # ソケットオープンおよび読み出しタイムアウトを設定（ミリ秒指定、5秒）
+            self.cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+            self.cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
 
     def _keep_reading(self) -> None:
         """バックグラウンドでフレームを常時読み込むループ。自動再接続ウォッチドッグ付き。"""

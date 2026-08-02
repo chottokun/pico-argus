@@ -1,5 +1,6 @@
 import time
 from unittest.mock import MagicMock, patch
+import cv2
 import numpy as np
 from pico.video_reader import RTSPVideoReader
 
@@ -26,6 +27,10 @@ def test_rtsp_video_reader_reading(mock_video_capture) -> None:
     assert ret is True
     assert frame is not None
     assert frame.shape == (480, 640, 3)
+
+    # タイムアウトプロパティの設定検証
+    mock_cap.set.assert_any_call(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+    mock_cap.set.assert_any_call(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
 
     # 停止確認
     reader.release()
