@@ -77,6 +77,11 @@ class RTSPVideoReader:
         with self.lock:
             return self.ret, self.frame
 
+    def get_latest_frame(self) -> Optional[np.ndarray]:
+        """最新のフレーム画像(numpy.ndarray)を直接取得する。"""
+        with self.lock:
+            return self.frame if self.ret else None
+
     def get_last_frame_time(self) -> float:
         """最新フレームを取得した時刻（タイムスタンプ）を取得する。"""
         with self.lock:

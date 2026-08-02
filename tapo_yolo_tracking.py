@@ -21,7 +21,6 @@ from pico.detector import YoloDetector
 from pico.tracker import SimpleIoUTracker
 from pico.ollama_client import OllamaVisionClient
 from pico.memory import MemoryStore
-from pico.cognition import CognitionEngine
 from pico.guardrails import GuardRails, FrameStatus
 
 # --- 📁 0. ログシステムの設定 ---
@@ -105,31 +104,12 @@ last_cognition_trigger_time = 0.0
 
 # --- 🧠 2. 認知ループ（Ollama + SQLite 長期記憶）のバックグラウンド起動 ---
 memory_store = MemoryStore(db_path="wiki.db")
-memory_store.add_entry(
-    filepath="rules/general.md",
-    doc_type="rule",
-    title="エッジ状況分析基本指示",
-    tags="status person action",
-    content="人(person)やオブジェクトを検知した場合、その状態や行動・状況を客観的に観察し分析すること。gemma4:e2bは最優先で使用すること。"
-)
-
 vlm_client = OllamaVisionClient(base_url=config.ollama_base_url, model=config.ollama_model)
-# ptz_controller を渡して相互参照を有効化
-cognition_engine = CognitionEngine(vlm_client=vlm_client, memory_store=memory_store, ptz_controller=ptz)
 ptz.target_rule = config.cognition_target_rule
 
-cognition_loop = asyncio.new_event_loop()
-
-def start_cognition_thread(loop):
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(cognition_engine.run())
-
-cognition_thread = threading.Thread(
-    target=start_cognition_thread, 
-    args=(cognition_loop,), 
-    daemon=True
-)
-cognition_thread.start()
+cognition_engine = None
+cognition_loop = None
+cognition_thread = None
 
 submitted_track_ids = set()
 
@@ -260,33 +240,23 @@ try:
                     for obj in track_candidates
                 ]
             }
-            cognition_engine.trigger_event_from_thread(event, cognition_loop)
+            if cognition_engine and cognition_loop:
+                cognition_engine.trigger_event_from_thread(event, cognition_loop)
             last_cognition_trigger_time = current_time
             logging.info(f"🧠 [Cognition Triggered] Sent {len(track_candidates)} targets to Cognition Loop.")
 
-        # 優先ターゲットの選定（ロックオン優先）
+        # 優先ターゲットの選定（ID固定に縛られず、画面内の人間 'person' を空間的にシームレス追尾）
         main_track_obj = None
         if len(track_candidates) > 0:
-            if ptz.lock_on_id is not None:
-                # ロックオンIDが画面内にあるか探索
-                lock_on_obj = next((o for o in track_candidates if o.track_id == ptz.lock_on_id), None)
-                if lock_on_obj is not None:
-                    main_track_obj = lock_on_obj
-                    # ロックオン中のオブジェクトを青い円でマーク
-                    mx, my, mw, mh = main_track_obj.bbox
-                    person_cx, person_cy = mx + mw // 2, my + mh // 2
-                    cv2.circle(frame, (person_cx, person_cy), 8, (255, 0, 255), -1)
-                else:
-                    # ロックオンされていた対象が画面外に消えた場合
-                    logging.info(f"🎯 [LOCK-ON LOST] Target ID {ptz.lock_on_id} lost. Reverting to default.")
-                    ptz.lock_on_id = None
-
-            # ロックオンがない、またはロストした場合は、最大面積のターゲットを追尾
-            if main_track_obj is None:
+            person_objs = [o for o in track_candidates if o.class_id < len(COCO_CLASSES) and COCO_CLASSES[o.class_id] == "person"]
+            if person_objs:
+                main_track_obj = max(person_objs, key=lambda o: o.bbox[2] * o.bbox[3])
+            else:
                 main_track_obj = max(track_candidates, key=lambda o: o.bbox[2] * o.bbox[3])
-                mx, my, mw, mh = main_track_obj.bbox
-                person_cx, person_cy = mx + mw // 2, my + mh // 2
-                cv2.circle(frame, (person_cx, person_cy), 6, (0, 0, 255), -1)
+            
+            mx, my, mw, mh = main_track_obj.bbox
+            person_cx, person_cy = mx + mw // 2, my + mh // 2
+            cv2.circle(frame, (person_cx, person_cy), 8, (255, 0, 255), -1)
 
         # --- ⏱️ モーター制御（反射ループ） ---
         dt = current_time - last_move_time
@@ -303,8 +273,8 @@ try:
                 norm_cx = person_cx / width
                 norm_cy = person_cy / height
                 
-                # PID計算
-                dx, dy = pid.calculate_step(norm_cx, 1.0 - norm_cy, dt)
+                # PID計算 (norm_cy をそのまま使用して正しく画面中央へ引き寄せるネガティブフィードバック)
+                dx, dy = pid.calculate_step(norm_cx, norm_cy, dt)
                 
                 logging.info(
                     f"🎯 [PID debug] Target: cx={norm_cx:.2f}, cy={norm_cy:.2f} | "
@@ -315,25 +285,47 @@ try:
                 if dx != 0.0 or dy != 0.0:
                     ptz.safe_move(dx, dy)
             else:
-                pid.reset()
+                # ターゲットロスト時は余計なハンティングや復帰を行わず、最後に捕捉した位置でカメラをピタリと静止固定保持
+                pass
             
             last_move_time = current_time
 
-        cv2.imshow("Tapo ONVIF YOLOv8 Experiment System", frame)
+        cv2.imshow("Pico Argus Monitor", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
 finally:
     logging.info("🛑 システム終了処理...")
-    cognition_loop.call_soon_threadsafe(cognition_loop.stop)
-    cognition_thread.join(timeout=1.0)
-    
+    try:
+        if cognition_loop and cognition_thread:
+            cognition_loop.call_soon_threadsafe(cognition_loop.stop)
+            cognition_thread.join(timeout=1.0)
+    except BaseException:
+        pass
+
     try:
         asyncio.run(vlm_client.close())
-    except Exception as e:
-        logging.warning(f"Failed to close VLM client safely: {e}")
-    memory_store.close()
-    
-    video_reader.release()
-    cv2.destroyAllWindows()
-    ptz.shutdown()
+    except BaseException:
+        pass
+
+    try:
+        memory_store.close()
+    except BaseException:
+        pass
+
+    try:
+        video_reader.release()
+    except BaseException:
+        pass
+
+    try:
+        ptz.shutdown()
+    except BaseException:
+        pass
+
+    try:
+        cv2.destroyAllWindows()
+        for _ in range(10):
+            cv2.waitKey(1)
+    except BaseException:
+        pass
