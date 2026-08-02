@@ -10,6 +10,7 @@
 Follow these rules before and during implementation:
 
 - `docs/coding-style.md` : Code style and Python development rules
+- `docs/hardware_polarity.md` : Tapo C210 ONVIF Hardware Polarity and Movement Rules (NEVER ALTER)
 - `docs/testing.md` : Test strategy and TDD workflow
 - `docs/git.md` : Git workflow and commit rules
 - `docs/security.md` : Security requirements and audits
