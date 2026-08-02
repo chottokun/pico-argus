@@ -60,3 +60,44 @@ async def test_mcp_vlm_exception_cleanup(mock_get_rpm, mock_get_vlm_sem, mock_ge
     # セマフォの context manager が正しく入出されたか
     mock_sem.__aenter__.assert_called_once()
     mock_sem.__aexit__.assert_called_once()
+
+
+@pytest.mark.anyio
+@patch("pico.mcp.server.get_perception")
+@patch("pico.mcp.server.get_ptz")
+@patch("pico.mcp.server.get_memory")
+async def test_mcp_structured_error_responses(mock_get_memory, mock_get_ptz, mock_get_perception) -> None:
+    """ConnectionError や TimeoutError などの各種エラー時に構造化JSONエラーレスポンスが返ることを検証するテスト"""
+    import json
+    mock_perception = MagicMock()
+    mock_get_perception.return_value = mock_perception
+
+    # 1. ConnectionError の検証
+    mock_perception.get_tracks_data.side_effect = ConnectionError("Could not connect to Tap camera")
+    res = await handle_call_tool("get_active_tracks", {})
+    assert len(res) == 1
+    err_data = json.loads(res[0].text)
+    assert err_data["status"] == "error"
+    assert err_data["error_type"] == "CONNECTION_ERROR"
+    assert "Failed to connect" in err_data["message"]
+    assert "Could not connect" in err_data["details"]
+
+    # 2. TimeoutError の検証
+    mock_perception.get_tracks_data.side_effect = TimeoutError("Camera response timed out")
+    res = await handle_call_tool("get_active_tracks", {})
+    assert len(res) == 1
+    err_data = json.loads(res[0].text)
+    assert err_data["status"] == "error"
+    assert err_data["error_type"] == "TIMEOUT_ERROR"
+    assert "Operation timed out" in err_data["message"]
+    assert "Camera response timed out" in err_data["details"]
+
+    # 3. 一般的な例外の検証
+    mock_perception.get_tracks_data.side_effect = RuntimeError("Something went wrong internally")
+    res = await handle_call_tool("get_active_tracks", {})
+    assert len(res) == 1
+    err_data = json.loads(res[0].text)
+    assert err_data["status"] == "error"
+    assert err_data["error_type"] == "INTERNAL_ERROR"
+    assert "Critical Error" in err_data["message"]
+    assert "Something went wrong" in err_data["details"]

@@ -21,6 +21,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def format_error_response(error_type: str, message: str, details: str) -> list[types.TextContent]:
+    """MCPツールのエラーを構造化JSONレスポンスに正規化する。"""
+    error_json = {
+        "status": "error",
+        "error_type": error_type,
+        "message": message,
+        "details": details
+    }
+    return [types.TextContent(type="text", text=json.dumps(error_json, ensure_ascii=False))]
+
 # 遅延初期化のためのグローバル変数
 config = None
 ptz = None
@@ -400,7 +410,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 aliases = [a.strip() for a in aliases_arg.split(",") if a.strip()]
 
             if not filepath or not title or not content:
-                return [types.TextContent(type="text", text="Error: 'filepath', 'title', and 'content' are required for write_wiki.")]
+                return format_error_response(
+                    error_type="INVALID_ARGUMENTS",
+                    message="Error: 'filepath', 'title', and 'content' are required for write_wiki.",
+                    details="One or more required fields are empty or missing."
+                )
 
             loop = asyncio.get_running_loop()
             active_memory = get_memory()
@@ -441,9 +455,27 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
         else:
             raise ValueError(f"Unknown tool: {name}")
 
+    except TimeoutError as te:
+        logger.warning(f"MCP Tool Timeout in {name}: {te}")
+        return format_error_response(
+            error_type="TIMEOUT_ERROR",
+            message="Operation timed out. The camera or LLM service may be unresponsive.",
+            details=str(te)
+        )
+    except ConnectionError as ce:
+        logger.error(f"MCP Tool Connection Error in {name}: {ce}")
+        return format_error_response(
+            error_type="CONNECTION_ERROR",
+            message="Failed to connect to the target hardware or daemon.",
+            details=str(ce)
+        )
     except Exception as e:
-        logger.error(f"Critical Error in MCP Bridge: {e}", exc_info=True)
-        return [types.TextContent(type="text", text=f"Critical Error in MCP Bridge: {str(e)}")]
+        logger.exception(f"Unexpected error in MCP Tool {name}")
+        return format_error_response(
+            error_type="INTERNAL_ERROR",
+            message=f"Critical Error in MCP Bridge: {type(e).__name__}",
+            details=str(e)
+        )
 
 async def main():
     from mcp.server.stdio import stdio_server

@@ -51,6 +51,10 @@ class PTZController:
         self.current_x: float = 0.0
         self.current_y: float = 0.0
 
+        # ContinuousMove 暴走防止用の安全装置 (Watchdog)
+        self._watchdog_timer: Optional[threading.Timer] = None
+        self._lock: threading.Lock = threading.Lock()
+
         # 能動的認知制御用: VLMに指示されたロックオン対象IDと追尾ルール
         self.lock_on_id: Optional[int] = None
         self.target_rule: str = "a person wearing a hat"
@@ -260,6 +264,60 @@ class PTZController:
     def move_to_center(self) -> Tuple[float, float]:
         """現在の推測位置から原点(0,0)へ復帰移動する。"""
         return self.safe_move(-self.current_x, -self.current_y)
+
+    def move_continuous(self, pan_speed: float, tilt_speed: float, zoom_speed: float = 0.0, auto_stop_delay: float = 2.0) -> None:
+        """指定スピードで連続移動を開始。
+        auto_stop_delay 秒後に stop() が呼ばれない場合、Watchdogが自動で物理カメラを停止させる。
+        """
+        with self._lock:
+            # 既存のタイマーがあればキャンセル
+            if self._watchdog_timer:
+                self._watchdog_timer.cancel()
+
+            # ONVIF標準のTimeout(PTZSpeed)を設定しつつリクエスト送出
+            request = self.ptz.create_type('ContinuousMove')
+            request.ProfileToken = self.profile_token
+            request.Velocity = {
+                'PanTilt': {'x': pan_speed, 'y': tilt_speed},
+                'Zoom': {'x': zoom_speed}
+            }
+            # ONVIF側のタイムアウト指定 (ISO 8601 duration string, 例: "PT2S" = 2秒)
+            request.Timeout = f"PT{int(auto_stop_delay)}S"
+
+            try:
+                self.ptz.ContinuousMove(request)
+            except Exception as e:
+                logger.error(f"Failed to execute ContinuousMove: {e}")
+                raise
+
+            # Python層でのバックアップWatchdogタイマー
+            self._watchdog_timer = threading.Timer(auto_stop_delay + 0.5, self._watchdog_stop_fallback)
+            self._watchdog_timer.daemon = True
+            self._watchdog_timer.start()
+
+    def stop(self) -> None:
+        """PTZ移動を明示的に停止"""
+        with self._lock:
+            if self._watchdog_timer:
+                self._watchdog_timer.cancel()
+                self._watchdog_timer = None
+
+            try:
+                request = self.ptz.create_type('Stop')
+                request.ProfileToken = self.profile_token
+                request.PanTilt = True
+                request.Zoom = True
+                self.ptz.Stop(request)
+            except Exception as e:
+                logger.error(f"Failed to send Stop command: {e}")
+                raise
+
+    def _watchdog_stop_fallback(self) -> None:
+        logger.warning("Watchdog triggered: ContinuousMove did not receive a stop command in time. Force stopping.")
+        try:
+            self.stop()
+        except Exception as e:
+            logger.error(f"Failed to force stop via Watchdog: {e}")
 
     def shutdown(self) -> None:
         """非同期スレッドを停止し、リソースをクリーンアップする。"""
