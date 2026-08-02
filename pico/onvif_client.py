@@ -215,37 +215,25 @@ class PTZController:
         self.move_queue.put((x, y))
 
     def safe_move(self, requested_x: float, requested_y: float) -> Tuple[float, float]:
-        """現在の推測位置と限界値を考慮し、安全な範囲にクランプして移動コマンドを送信する。
-
-        Returns:
-            Tuple[float, float]: 実際に送信されたクランプ後の移動量 (x, y)。
+        """物理PTZ制御のためのスルー透過＆ガイド型クランプ。
+        ソフトウェアの過剰クランプによる移動命令のフリーズ・殺しを排出し、
+        物理カメラへ素直に相対移動コマンドを発行する。
         """
-        next_x = self.current_x + requested_x
-        next_y = self.current_y + requested_y
         actual_move_x, actual_move_y = requested_x, requested_y
 
-        # X軸（左右）のクランプ
-        if next_x > self.max_limit_x:
-            actual_move_x = self.max_limit_x - self.current_x
-        elif next_x < -self.max_limit_x:
-            actual_move_x = -self.max_limit_x - self.current_x
-
-        # Y軸（上下）のクランプ
-        if next_y > self.max_limit_y:
-            actual_move_y = self.max_limit_y - self.current_y
-        elif next_y < -self.max_limit_y:
-            actual_move_y = -self.max_limit_y - self.current_y
-
-        if abs(actual_move_x) > 0.001 or abs(actual_move_y) > 0.001:
+        if abs(actual_move_x) > 0.0005 or abs(actual_move_y) > 0.0005:
             # 物理カメラに命令を送信するタイミングで反転を適用
             cmd_x = -actual_move_x if self.invert_pan else actual_move_x
             cmd_y = -actual_move_y if self.invert_tilt else actual_move_y
             self.relative_move(cmd_x, cmd_y)
+            
+            # 推測位置ガイドの更新（ソフトガイドとして安全可動域内に収める）
             self.current_x = max(-self.max_limit_x, min(self.max_limit_x, self.current_x + actual_move_x))
             self.current_y = max(-self.max_limit_y, min(self.max_limit_y, self.current_y + actual_move_y))
+            
             logger.info(
-                f"PTZ Safe Move: x={actual_move_x:+.3f}, y={actual_move_y:+.3f} (cmd_x={cmd_x:+.3f}, cmd_y={cmd_y:+.3f}) | "
-                f"Estimated Pos: X={self.current_x:+.2f}, Y={self.current_y:+.2f}"
+                f"PTZ Move: x={actual_move_x:+.3f}, y={actual_move_y:+.3f} (cmd_x={cmd_x:+.3f}, cmd_y={cmd_y:+.3f}) | "
+                f"Pos Guide: X={self.current_x:+.2f}, Y={self.current_y:+.2f}"
             )
             return actual_move_x, actual_move_y
             

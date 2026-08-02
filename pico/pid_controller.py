@@ -48,15 +48,14 @@ class AdaptivePIDController:
         Returns:
             Tuple[float, float]: 算出されたX軸、Y軸の相対移動量 (dx, dy)。
         """
-        # 画角中心(0.5, 0.5)からの偏差 (X軸・Y軸ともに 0.5 - pos でターゲットを画面中央へ正しく手繰り寄せる)
-        error_x = 0.5 - target_cx
-        error_y = 0.5 - target_cy
+        # 画角中心(0.5, 0.5)からの偏差
+        error_x = target_cx - 0.5
+        error_y = target_cy - 0.5
 
-        # 1. 不感帯（Dead Zone）判定: 上下Y軸は追従死を防ぐため 0.008 の超高感度に絞り込む
-        dead_zone_x = 0.015
-        dead_zone_y = 0.008
+        # 1. 不感帯（Dead Zone）判定
+        dead_zone_y = min(self.dead_zone, 0.01)
 
-        if abs(error_x) < dead_zone_x:
+        if abs(error_x) < self.dead_zone:
             error_x = 0.0
             self.integral_x = 0.0
         if abs(error_y) < dead_zone_y:

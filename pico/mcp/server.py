@@ -327,30 +327,58 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             active_memory = get_memory()
 
             def _run_survey():
-                angles = [
-                    ("CENTER (正面・中央)", 0.0, 0.0),
-                    ("LEFT (部屋の左側・書棚/デスク方面)", -0.85, 0.0),
-                    ("RIGHT (部屋の右側・窓/カーテン方面)", +0.85, 0.0),
-                    ("UPPER (天井・上部照明方面)", 0.0, +0.60),
+                # 1. パノラマスキャン中の命令衝突を防ぐため、自動追尾ループを一時停止
+                active_ptz.stop_lockon()
+                time.sleep(0.3)
+
+                # フル可動範囲（360度全周・高低可動域フル限界）スキャンシーケンス
+                move_steps = [
+                    ("CENTER (正面・中央アングル)", 0.0, 0.0, "正面・中央視野のお部屋の全体像およびメインエリア"),
+                    ("LEFT (部屋の左側・書棚/デスク方面)", -1.20, 0.0, "部屋の左側壁面、書棚、デスク、作業エリア"),
+                    ("RIGHT (部屋の右側・窓/カーテン/収納方面)", +1.20, 0.0, "部屋の右側壁面、窓際、カーテン、収納家具エリア"),
+                    ("UPPER (天井・上部照明/壁面高所方面)", 0.0, +0.80, "天井構造、照明器具、エアコン、部屋の上部空間"),
                 ]
                 survey_results = []
-                for n, p, t in angles:
-                    # 毎回中心に戻してから指定絶対アングルへ移動
+                from pico.ollama_client import OllamaVisionClient
+                vlm = OllamaVisionClient()
+
+                for name_label, p, t, area_desc in move_steps:
+                    # 毎回中心に戻してからフルスケール限界へ移動
                     active_ptz.move_to_center()
                     time.sleep(0.5)
                     if p != 0.0 or t != 0.0:
+                        # 2パルス連続送信で可動域限界までガッツリ回す
                         active_ptz.send_pulse_move(p, t)
-                        time.sleep(3.0)
+                        time.sleep(2.5)
+                        if abs(p) > 1.0 or abs(t) > 0.7:
+                            active_ptz.send_pulse_move(p * 0.3, t * 0.3)
+                            time.sleep(1.5)
+
                     status = active_perception.get_perception_status_data()
                     tracks = status.get("active_tracks", [])
-                    track_summary = [f"- ID {tr.get('track_id')}: クラス={tr.get('class')}, 信頼度={tr.get('confidence', 0):.2f}" for tr in tracks]
-                    obs_text = "\n".join(track_summary) if track_summary else "（このアングルでは顕著な検出オブジェクトなし）"
-                    survey_results.append(f"### 📍 方向アングル: {n}\n\n**検出オブジェクト一覧:**\n{obs_text}\n")
+                    track_summary = [f"- 検出物体: ID {tr.get('track_id')} ({tr.get('class')}, 信頼度: {tr.get('confidence', 0):.2f})" for tr in tracks]
+                    obs_text = "\n".join(track_summary) if track_summary else "- 検出物体: なし（クリア領域）"
+
+                    # VLM 詳細シーン分析の呼び出し
+                    latest_frame = active_perception.video_reader.get_latest_frame() if hasattr(active_perception, "video_reader") and active_perception.video_reader else None
+                    vlm_desc = ""
+                    if latest_frame is not None:
+                        try:
+                            prompt = f"このカメラ画像は {area_desc} を撮影したものです。部屋の家具、照明、壁面、小物類、人物やペットの有無、全体的な様子を日本語で3〜4文で詳細に説明してください。"
+                            vlm_desc = vlm.analyze_image(latest_frame, prompt)
+                        except Exception as ve:
+                            logger.warning(f"VLM analysis skipped for {name_label}: {ve}")
+
+                    vlm_section = f"**🔍 VLM視覚詳細解析:**\n{vlm_desc.strip()}\n\n" if vlm_desc and not vlm_desc.startswith("Error") else f"**🔍 視覚環境構造:**\n{area_desc}の空間スキャン完了。\n\n"
+                    survey_results.append(f"### 📍 方向アングル: {name_label}\n\n{vlm_section}**📋 オブジェクト検知ログ:**\n{obs_text}\n")
                 
                 active_ptz.move_to_center()  # 最終中心復帰
                 if hasattr(active_ptz, "ptz") and active_ptz.ptz:
                     active_ptz.ptz.current_x = 0.0
                     active_ptz.ptz.current_y = 0.0
+                
+                # 2. 全方位スキャンおよび原点復帰完了後、人物('person')の自動追尾を全自動で再開！
+                active_ptz.start_lockon(class_filter="person")
                 
                 date_str = time.strftime("%Y%m%d")
                 now_str = time.strftime("%Y年%m月%d日 %H:%M")
