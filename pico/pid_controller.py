@@ -53,12 +53,10 @@ class AdaptivePIDController:
         error_y = target_cy - 0.5
 
         # 1. 不感帯（Dead Zone）判定
-        dead_zone_y = min(self.dead_zone, 0.01)
-
         if abs(error_x) < self.dead_zone:
             error_x = 0.0
             self.integral_x = 0.0
-        if abs(error_y) < dead_zone_y:
+        if abs(error_y) < self.dead_zone:
             error_y = 0.0
             self.integral_y = 0.0
 

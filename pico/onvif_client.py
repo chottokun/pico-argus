@@ -222,7 +222,7 @@ class PTZController:
         actual_move_x, actual_move_y = requested_x, requested_y
 
         if abs(actual_move_x) > 0.0005 or abs(actual_move_y) > 0.0005:
-            # 物理カメラに命令を送信するタイミングで反転を適用
+            # 物理カメラに命令を送信するタイミングで反転を適用（X/Y対称設計）
             cmd_x = -actual_move_x if self.invert_pan else actual_move_x
             cmd_y = -actual_move_y if self.invert_tilt else actual_move_y
             self.relative_move(cmd_x, cmd_y)

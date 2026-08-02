@@ -13,12 +13,12 @@ title: Tapo C210 ONVIF Hardware Polarity Rules
 ```json
 {
     "INVERT_PAN": true,
-    "INVERT_TILT": false
+    "INVERT_TILT": true
 }
 ```
 
-- **`INVERT_PAN = true`**: 画面右にターゲットが現れた際、カメラを右へ向かせてターゲットを画面中央に収束させるネガティブフィードバック追尾に不可欠。
-- **`INVERT_TILT = false`**: 画面上にターゲットが現れた際、カメラを上へ向かせる標準垂直制御に不可欠。
+- **`INVERT_PAN = true`**: ONVIF `x > 0` が物理LEFT のため、標準エラー式 `error_x = target_cx - 0.5` と組み合わせて正しいネガティブフィードバック追尾を実現。
+- **`INVERT_TILT = true`**: ONVIF `y > 0` が物理UP のため、標準エラー式 `error_y = target_cy - 0.5` と組み合わせて正しいネガティブフィードバック追尾を実現。両軸とも同一の対称設計。
 
 ---
 
@@ -36,22 +36,22 @@ title: Tapo C210 ONVIF Hardware Polarity Rules
 ## 3. `PTZController.safe_move` 変換方程式 (`onvif_client.py`)
 
 ```python
-# 物理カメラに命令を送信するタイミングでの極性適用規則
+# 物理カメラに命令を送信するタイミングでの極性適用規則（X/Y対称設計）
 cmd_x = -actual_move_x if self.invert_pan else actual_move_x
 cmd_y = -actual_move_y if self.invert_tilt else actual_move_y
 ```
 
-- **水平 (`x`)**: `requested_x > 0` (右移動要求) ➔ `cmd_x = -requested_x < 0` ➔ 物理右へ正しく移動。
-- **垂直 (`y`)**: `requested_y > 0` (上移動要求) ➔ `cmd_y = requested_y > 0` ➔ 物理上へ正しく移動。
+- **水平 (`x`)**: `error_x > 0`（人が画面右）➔ `dx > 0` ➔ `cmd_x = -dx < 0` ➔ ONVIF負 = 物理右へ正しく移動。
+- **垂直 (`y`)**: `error_y > 0`（人が画面下）➔ `dy > 0` ➔ `cmd_y = -dy < 0` ➔ ONVIF負 = 物理下へ正しく移動。
 
 ## 3.5. 自動追尾 (PID Loop) 入力座標仕様 (`pid_controller.py`)
 
-- **偏差計算公式**:
+- **偏差計算公式**（標準数学形式）:
   ```python
-  error_x = 0.5 - target_cx
-  error_y = 0.5 - target_cy
+  error_x = target_cx - 0.5
+  error_y = target_cy - 0.5
   ```
-  `target - 0.5` を使用してはならない（反転入力は画面上のターゲットを逃がす正フィードバック暴走を引き起こす）。
+  `INVERT_PAN = true` および `INVERT_TILT = true` と組み合わせることで、両軸対称にネガティブフィードバック追尾を実現する。
 
 ---
 
